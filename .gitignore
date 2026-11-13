@@ -1,0 +1,26 @@
+# sbt and IDE
+target/
+project/target/
+project/project/
+.bsp/
+.idea/
+.metals/
+.bloop/
+.vscode/
+*.iml
+
+# Data, models and outputs are large or derived: never commit them
+data/raw/
+data/clean/
+models/
+out/
+spark-warehouse/
+metastore_db/
+*.parquet
+*.csv
+!src/test/resources/**/*.csv
+
+# Secrets and OS files
+.env
+*.token
+.DS_Store
