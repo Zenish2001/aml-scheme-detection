@@ -1,7 +1,7 @@
 // AML Scheme Detection: a personal project by Zenish Borad
 // Three modules, so Spark's and Akka's dependencies never clash.
 
-ThisBuild / scalaVersion := "2.13.16"   // Spark needs Scala 2.13, as in the course's spark-csv module
+ThisBuild / scalaVersion := "2.13.18"   // Spark needs Scala 2.13, as in the course's spark-csv module
 ThisBuild / organization := "edu.neu.csye7200.aml"
 ThisBuild / version      := "0.1.0-SNAPSHOT"
 
