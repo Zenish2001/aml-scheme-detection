@@ -38,6 +38,8 @@ lazy val batch = (project in file("batch")).dependsOn(common).settings(
     scalaTest),
   fork := true,
   javaOptions ++= sparkJvmFlags,
+  run / baseDirectory := (ThisBuild / baseDirectory).value,   // run from the repo root, so "data/raw/..." paths work
+  outputStrategy := Some(StdoutOutput),                        // show the program's output as it is
   Test / fork := true,
   Test / javaOptions ++= sparkJvmFlags)
 
