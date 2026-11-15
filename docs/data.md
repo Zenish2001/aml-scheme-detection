@@ -62,3 +62,15 @@ The columns of `data/clean/txns`, plus `senderAccount` and `receiverAccount` (ba
 | `Recv24hCount`, `Recv24hUsd`, `Recv24hMaxUsd` | Payments received: how many, their total and the largest |
 | `Recv24hParties` | How many different accounts paid it |
 | `Currencies24h`, `Formats24h` | How many different currencies and payment formats it used |
+
+Part 2b adds `txnId`, a unique ID per transaction, and 9 more features:
+
+| Feature | Meaning | With no history |
+|---|---|---|
+| `isCrossCurrency`, `isSelfTransfer`, `isSameBank` | 1 if paid and received in different currencies, between the same account, or within the same bank | — |
+| `hourOfDay` | The hour of the day, 0-23, in UTC | — |
+| `isJustUnder10k` | 1 if the payment is between $9,000 and $9,999.99 | — |
+| `pairPayments7d` | Payments from the same sender to the same receiver in the 168 whole hours before | 0 |
+| `senderMinutesSinceReceived` | Minutes since the sender last received money, before this minute | 10,080 |
+| `senderPassThrough24h` | (Sent in the last 24 hours + this payment) / received in the last 24 hours | -1 |
+| `amountVsSenderAverage24h` | This payment / the sender's average payment in the last 24 hours | -1 |

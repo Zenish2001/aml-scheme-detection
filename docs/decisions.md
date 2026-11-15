@@ -65,3 +65,14 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 
 **Decision:** Spark reads the data's times as UTC.
 **Why:** The times have no time zone. Read in a zone like India's (UTC + 5:30), every hour would be split differently, so hourly features would change from one computer to another.
+
+## 13. Fixed values when there's no history
+
+**Decision:** A feature with nothing to look at takes a fixed value instead of being empty: -1 for a ratio, a week (10,080 minutes) for a time gap, and 0 for a count.
+**Why:** Models need a value in every column, and a fixed value that can't otherwise occur lets them treat "no history" as its own case.
+**Note:** Early in the data, every account has little history, so results should also be checked on later days alone.
+
+## 14. Compare with medians, not averages
+
+**Decision:** Comparisons between laundering and normal transactions use medians and the share above zero.
+**Why:** A few hub accounts make thousands of payments a day. A normal sender averaged 845 payments in the previous 24 hours, while the median is 3, so averages describe the hubs rather than a typical account.
