@@ -50,3 +50,15 @@ One row per payment, 234,355 rows.
 |---|---|---|
 | `src` | whole number | The transaction the money came from |
 | `dst` | whole number | The transaction it went to |
+
+## `data/clean/features`: transactions with account features
+
+The columns of `data/clean/txns`, plus `senderAccount` and `receiverAccount` (bank and account number joined by a vertical bar), `hour` (whole hours since 1 January 1970, in UTC), and 20 features describing the 24 whole hours before the transaction's hour. Each of these 10 appears twice, as `sender...` and `receiver...`:
+
+| Feature | Meaning |
+|---|---|
+| `Sent24hCount`, `Sent24hUsd`, `Sent24hMaxUsd` | Payments sent: how many, their total and the largest, in US dollars |
+| `Sent24hParties` | How many different accounts it paid |
+| `Recv24hCount`, `Recv24hUsd`, `Recv24hMaxUsd` | Payments received: how many, their total and the largest |
+| `Recv24hParties` | How many different accounts paid it |
+| `Currencies24h`, `Formats24h` | How many different currencies and payment formats it used |
