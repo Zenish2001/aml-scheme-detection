@@ -74,3 +74,15 @@ Part 2b adds `txnId`, a unique ID per transaction, and 9 more features:
 | `senderMinutesSinceReceived` | Minutes since the sender last received money, before this minute | 10,080 |
 | `senderPassThrough24h` | (Sent in the last 24 hours + this payment) / received in the last 24 hours | -1 |
 | `amountVsSenderAverage24h` | This payment / the sender's average payment in the last 24 hours | -1 |
+
+## `data/clean/features_graph`: transactions with all features
+
+The columns of `data/clean/features`, plus 5 graph features about the 7 days (168 whole hours) before the transaction's hour:
+
+| Feature | Meaning |
+|---|---|
+| `reciprocal7d` | Payments from the receiver back to the sender |
+| `cyclePaths7d` | Accounts x where the receiver paid x, then x paid the sender, so this payment closes a 3-step loop |
+| `scatterGatherPaths7d` | Other go-betweens x: some account paid both the sender and x, then x paid the receiver. 0 when the sender or receiver is a hub |
+| `isBitcoin` | 1 if the payment is in Bitcoin |
+| `senderRecvOtherRail24h` | Payments the sender received in the last 24 hours through the other rail (bank if this payment is in Bitcoin, and Bitcoin if not) |

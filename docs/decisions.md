@@ -76,3 +76,19 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 
 **Decision:** Comparisons between laundering and normal transactions use medians and the share above zero.
 **Why:** A few hub accounts make thousands of payments a day. A normal sender averaged 845 payments in the previous 24 hours, while the median is 3, so averages describe the hubs rather than a typical account.
+
+## 15. Skip hubs as go-betweens
+
+**Decision:** Accounts with more than 100 different counterparties are never the middle account of a path, and payments to or from them get no go-between count.
+**Why:** They're banks and businesses, not the mule accounts that schemes pass through, and paths through them would multiply into billions.
+**Evidence:** Only 15 accounts are hubs, but they touch 8.9% of transactions.
+
+## 16. Paths must happen in order, and are stored with lists of hours
+
+**Decision:** A path counts only if each step came in a later hour than the one before, all within the 7 days before the transaction. Each two-step path is stored once, with the hours of each step as lists.
+**Why:** Payments that happen out of order don't form a loop. And one row per pair of hours would make the table far too large; with lists, all the graph features take about a minute.
+**Evidence:** Brute-force counts from individual payments agree for 1,056 sampled transactions.
+
+## 17. Cross-rail behavior doesn't exist in HI-Small
+
+**Finding:** No account receives money through one rail and pays through the other within a day: Bitcoin activity happens in separate accounts, and none of the listed schemes use Bitcoin. The feature `senderRecvOtherRail24h` stays for Part 6, but carries no signal in this dataset.
