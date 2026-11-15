@@ -54,3 +54,14 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 
 **Decision:** Elliptic transactions keep the label `unknown` (77% of them), with `isIllicit` left empty, rather than being dropped.
 **Why:** They're still part of the payment graph, which graph features need, even though models can only learn from the labelled ones.
+
+## 11. Account features from hourly totals, counting only whole hours before
+
+**Decision:** Each account's activity is first added up per hour, and its 24-hour features add up the 24 hourly rows before the transaction's own hour.
+**Why:** Comparing every payment with every other payment of the same account is far too slow for accounts with thousands of payments a day, while hourly rows cap the look-back at 24 rows. Payments earlier in the same hour aren't counted: times are only given to the minute, and counting a later payment would leak the future.
+**Evidence:** For 1,053 sampled transactions, a brute-force count matches the feature exactly.
+
+## 12. Read times as UTC
+
+**Decision:** Spark reads the data's times as UTC.
+**Why:** The times have no time zone. Read in a zone like India's (UTC + 5:30), every hour would be split differently, so hourly features would change from one computer to another.
