@@ -86,3 +86,7 @@ The columns of `data/clean/features`, plus 5 graph features about the 7 days (16
 | `scatterGatherPaths7d` | Other go-betweens x: some account paid both the sender and x, then x paid the receiver. 0 when the sender or receiver is a hub |
 | `isBitcoin` | 1 if the payment is in Bitcoin |
 | `senderRecvOtherRail24h` | Payments the sender received in the last 24 hours through the other rail (bank if this payment is in Bitcoin, and Bitcoin if not) |
+
+## `data/clean/scores`: Stage 1 scores
+
+One row per transaction from Sep 6 onwards, the days the model didn't train on: `txnId`, `day`, `period` (validation, test or tail), `isLaundering`, `scheme`, and `score`, the model's probability of laundering from 0 to 1. The model itself is saved in `data/models/stage1`.

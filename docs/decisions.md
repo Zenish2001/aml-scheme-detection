@@ -92,3 +92,24 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 ## 17. Cross-rail behavior doesn't exist in HI-Small
 
 **Finding:** No account receives money through one rail and pays through the other within a day: Bitcoin activity happens in separate accounts, and none of the listed schemes use Bitcoin. The feature `senderRecvOtherRail24h` stays for Part 6, but carries no signal in this dataset.
+
+## 18. Split by time: train on Sep 1-5, choose on Sep 6, report on Sep 7-10
+
+**Decision:** Models learn from Sep 1-5, choices between them are made on Sep 6 alone, and results come from Sep 7-10. The tail after Sep 10 is reported apart.
+**Why:** In real life a model only ever scores the future. A random split would let it learn from later days, and choosing on the test days would make the test results too optimistic.
+
+## 19. Train on every laundering transaction and 5% of the normal ones
+
+**Decision:** The training set keeps all 1,999 laundering transactions from Sep 1-5 and a 5% sample of the normal ones: 139,748 rows.
+**Why:** With 0.1% laundering, a model trained on everything mostly learns to say "normal". The sample keeps the ranking it learns and trains 20 times faster.
+
+## 20. Drop hourOfDay
+
+**Decision:** The model doesn't use `hourOfDay`.
+**Evidence:** With it, test PR-AUC was 0.082; without it, 0.118. Normal transactions cluster at midnight UTC in this simulator, and the model was learning that habit rather than laundering.
+
+## 21. Compare rules and models at the same number of alerts
+
+**Decision:** Each rule is compared with the model's top N transactions, where N is how many alerts the rule raised.
+**Why:** A rule that raises more alerts will always catch more; comparing at equal volume shows which is better at choosing.
+**Evidence:** At every rule's volume, the model caught 1.4 to 2 times as much laundering.
