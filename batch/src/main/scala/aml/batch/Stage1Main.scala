@@ -32,7 +32,9 @@ object Stage1Main {
       val test       = all.filter(col("period") === "test").cache()
       val tail       = all.filter(col("period") === "tail").cache()
       val baseline   = test.filter(col("isLaundering") === 1).count().toDouble / test.count()
-      println(f"Training sample: ${sample.count()}%,d rows (every laundering transaction, and 5%% of the normal ones)")
+      val sampleRows  = sample.count()
+      val normalShare = Stage1.NegativeFraction * 100
+      println(f"Training sample: $sampleRows%,d rows (every laundering transaction, and $normalShare%.0f%% of the normal ones)")
 
       // 2. Train three models
       val withHour    = Stage1.numericFeatures(includeHour = true)
@@ -56,11 +58,14 @@ object Stage1Main {
 
       // 3. Alerts at daily budgets, on the test days
       val scoredTest = Stage1.score(best, test).cache()
-      println(f"\n$bestName on the test days (Sep 7-10), PR-AUC $bestTest%.4f. Alerts at a daily budget:")
-      println("%-18s %10s %10s %12s %10s".format("alerts per day", "alerts", "caught", "recall", "precision"))
+      println(f"\n$bestName on the test days (Sep 7-10), PR-AUC $bestTest%.4f. Alerts at a daily budget,")
+      println("per transaction, and per sending account (an account alert covers that sender's whole day):")
+      println("%-16s %10s %10s %12s %12s %14s".format("alerts per day", "caught", "recall", "precision", "accounts: prec.", "laundering covered"))
       DailyBudgets.foreach { perDay =>
         val a = Stage1.atDailyBudget(scoredTest, perDay)
-        println("%-18d %,10d %,10d %11.1f%% %9.1f%%".format(perDay, a.alerts, a.caught, a.recall * 100, a.precision * 100))
+        val b = Stage1.atDailyAccountBudget(scoredTest, perDay)
+        println("%-16d %,10d %9.1f%% %11.1f%% %14.1f%% %17.1f%%".format(
+          perDay, a.caught, a.recall * 100, a.precision * 100, b.precision * 100, b.recall * 100))
       }
       val tailAuc = Stage1.prAuc(Stage1.score(best, tail))
       println(f"On the tail (Sep 11-18), PR-AUC $tailAuc%.4f: 59%% of the tail is laundering, so this flatters the model")
