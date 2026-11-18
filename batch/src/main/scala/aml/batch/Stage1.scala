@@ -20,7 +20,7 @@ object Stage1 {
   val TrainEnd         = "2022-09-05"
   val ValidationDay    = "2022-09-06"
   val TestEnd          = "2022-09-10"
-  val NegativeFraction = 0.05   // train on every laundering transaction, and 5% of the normal ones
+  val NegativeFraction = 0.20   // train on every laundering transaction, and 20% of the normal ones (decision 22)
 
   private val perAccount = Seq(
     "Sent24hCount", "Sent24hUsd", "Sent24hMaxUsd", "Sent24hParties",
@@ -45,15 +45,16 @@ object Stage1 {
   def withLabel(df: DataFrame): DataFrame = df.withColumn("label", col("isLaundering").cast("double"))
 
   /** Every laundering row, and a NegativeFraction sample of the normal ones. Training on 0.1% positives would
-    * mostly teach the model to say "normal"; the sample keeps the ranking it learns, and trains 20 times faster.
+    * mostly teach the model to say "normal"; the sample keeps the ranking it learns, and trains 5 times faster.
+    * Too small a sample hides the rare giant hub accounts, and the model then mistakes their payments for laundering.
     */
-  def trainingSample(train: DataFrame): DataFrame =
-    train.stat.sampleBy("isLaundering", Map(0 -> NegativeFraction, 1 -> 1.0), seed = 42)
+  def trainingSample(train: DataFrame, normalFraction: Double = NegativeFraction): DataFrame =
+    train.stat.sampleBy("isLaundering", Map(0 -> normalFraction, 1 -> 1.0), seed = 42)
 
   /** Gradient-boosted trees: many small decision trees, each correcting the ones before. */
-  def gbt(iterations: Int = 60): GBTClassifier =
+  def gbt(iterations: Int = 120, depth: Int = 7): GBTClassifier =
     new GBTClassifier().setLabelCol("label").setFeaturesCol("features")
-      .setMaxIter(iterations).setMaxDepth(5).setStepSize(0.1).setSubsamplingRate(0.8).setSeed(42)
+      .setMaxIter(iterations).setMaxDepth(depth).setStepSize(0.1).setSubsamplingRate(0.8).setSeed(42)
 
   /** A simple straight-line model, as a baseline. */
   def logistic: LogisticRegression =
@@ -97,6 +98,27 @@ object Stage1 {
   def topN(scored: DataFrame, n: Long): Alerts = {
     val alerts = scored.orderBy(desc("score")).limit(n.toInt)
     Alerts(alerts.count(), launderingIn(alerts), launderingIn(scored))
+  }
+
+  /** Alerts per sending account rather than per transaction: how many accounts were alerted, how many of them made
+    * a laundering payment that day, and how many laundering payments their alerts covered.
+    */
+  final case class AccountAlerts(alerts: Long, withLaundering: Long, launderingCovered: Long, laundering: Long) {
+    def precision: Double = if (alerts == 0) 0.0 else withLaundering.toDouble / alerts
+    def recall: Double    = if (laundering == 0) 0.0 else launderingCovered.toDouble / laundering
+  }
+
+  /** Each day, the `perDay` senders with the highest-scored payment become alerts, and each alert covers all of that
+    * sender's payments that day. Analysts investigate accounts, and a busy account then takes one alert, not hundreds.
+    */
+  def atDailyAccountBudget(scored: DataFrame, perDay: Int): AccountAlerts = {
+    val bySender = scored.groupBy("day", "senderAccount")
+      .agg(max("score").as("score"), max("isLaundering").as("anyLaundering"), sum("isLaundering").as("launderingTxns"))
+      .withColumn("rank", row_number().over(Window.partitionBy("day").orderBy(desc("score"))))
+    val totals = bySender.filter(col("rank") <= perDay)
+      .agg(count(lit(1)), coalesce(sum("anyLaundering"), lit(0L)), coalesce(sum("launderingTxns"), lit(0L)))
+      .first()
+    AccountAlerts(totals.getLong(0), totals.getLong(1), totals.getLong(2), launderingIn(scored))
   }
 
   /** Every transaction a rule matches becomes an alert. */

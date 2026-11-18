@@ -113,3 +113,20 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 **Decision:** Each rule is compared with the model's top N transactions, where N is how many alerts the rule raised.
 **Why:** A rule that raises more alerts will always catch more; comparing at equal volume shows which is better at choosing.
 **Evidence:** At every rule's volume, the model caught 1.4 to 2 times as much laundering.
+
+## 22. Train on 20% of normal transactions, with bigger trees
+
+**Decision:** The training set keeps 20% of normal transactions (554,820 rows), and the model uses 120 trees of depth 7. This replaces the 5% in decision 19.
+**Why:** With 5%, the model saw too few of the 15 hub accounts and ranked their large, regular payments highest: 91 of the top 100 test alerts were false alarms, from just 14 senders, mostly hubs. Bigger trees alone made things worse, because they memorized the small sample.
+**Evidence:** On the validation day, PR-AUC rose from 0.164 to 0.351, and top-25 precision from 8% to 96%. On the test days, PR-AUC rose from 0.118 to 0.269, and top-25-a-day precision from 9.0% to 93.0%.
+
+## 23. Report alerts per account as well as per transaction
+
+**Decision:** Results show alerts per sending account (each covering that sender's whole day) beside alerts per transaction.
+**Why:** Analysts investigate accounts, and a busy account should take one alert, not hundreds.
+**Evidence:** At 250 alerts a day on the test days, account alerts cover 48.0% of laundering payments at 52.8% precision; transaction alerts cover 23.9%.
+
+## 24. hourOfDay stays out, though the evidence is now mixed
+
+**Decision:** The model still doesn't use `hourOfDay`.
+**Why:** Models are chosen on the validation day alone, and there the model without it scores higher (0.351, against 0.332). On the test days the model with it scores higher (0.290, against 0.269), but choosing on the test days would make them meaningless. The hour pattern also looks like a habit of the simulator. To revisit in Part 6.
