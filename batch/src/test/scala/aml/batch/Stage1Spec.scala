@@ -38,6 +38,16 @@ class Stage1Spec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
     all.columns.toSeq should contain allElementsOf Stage1.numericFeatures(includeHour = true)
   }
 
+  it should "keep every laundering transaction in the training sample, and only some normal ones" in {
+    val session = spark
+    import session.implicits._
+    val train  = (0 until 1000).map(i => (i, if (i < 20) 1 else 0)).toDF("id", "isLaundering")
+    val sample = Stage1.trainingSample(train, normalFraction = 0.2)
+
+    sample.filter($"isLaundering" === 1).count() shouldBe 20
+    sample.filter($"isLaundering" === 0).count() should (be > 100L and be < 300L)   // about 20% of 980
+  }
+
   it should "raise each day's highest-scored transactions as that day's alerts" in {
     val session = spark
     import session.implicits._
@@ -50,6 +60,22 @@ class Stage1Spec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
     alerts shouldBe Stage1.Alerts(alerts = 2, caught = 1, laundering = 3)
     alerts.recall shouldBe (1.0 / 3 +- 1e-9)
     alerts.precision shouldBe 0.5
+  }
+
+  it should "raise each day's highest-scored senders as account alerts, covering their whole day" in {
+    val session = spark
+    import session.implicits._
+    val day1 = Date.valueOf("2022-09-07")
+    val day2 = Date.valueOf("2022-09-08")
+    val scored = Seq(
+      (day1, "A", 0.9, 1), (day1, "A", 0.8, 1), (day1, "B", 0.7, 0), (day1, "C", 0.6, 1),   // A is alerted: 2 laundering payments
+      (day2, "D", 0.5, 0), (day2, "E", 0.4, 1))                                              // D is alerted, wrongly
+      .toDF("day", "senderAccount", "score", "isLaundering")
+
+    val alerts = Stage1.atDailyAccountBudget(scored, perDay = 1)
+    alerts shouldBe Stage1.AccountAlerts(alerts = 2, withLaundering = 1, launderingCovered = 2, laundering = 4)
+    alerts.precision shouldBe 0.5
+    alerts.recall shouldBe 0.5
   }
 
   it should "train a model that ranks laundering first when one feature gives it away" in {
