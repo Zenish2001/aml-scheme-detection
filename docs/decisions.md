@@ -130,3 +130,14 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 
 **Decision:** The model still doesn't use `hourOfDay`.
 **Why:** Models are chosen on the validation day alone, and there the model without it scores higher (0.351, against 0.332). On the test days the model with it scores higher (0.290, against 0.269), but choosing on the test days would make them meaningless. The hour pattern also looks like a habit of the simulator. To revisit in Part 6.
+
+## 25. Rules are text, read into one tree with two evaluators
+
+**Decision:** Rules live in `rules/aml.rules`, as text. A parser written with parser combinators, in `common`, reads them into a tree of comparisons joined by and, or and not. `RuleColumns` evaluates the tree as a Spark column for batch data, and `Rules.matches` evaluates it in plain Scala for the live monitor.
+**Why:** Rules can be read and changed without touching code, and one tree means batch and live monitoring always give the same answers.
+**Evidence:** `RuleColumnsSpec` checks that both evaluators match exactly the same rows. The three rules from Part 4a, now read from the file, give exactly the same results as their Scala versions: 52.0%, 46.7% and 12.7% recall.
+
+## 26. Rules explain alerts; the model ranks them
+
+**Finding:** Given the same number of alerts, the model catches more laundering than every rule: 24.4% against 4.4% for the most precise rule, and 88.4% against 75.4% for all five rules together. The most precise rule (money passed on within an hour, by ACH, to a new payee) is right 7.35% of the time; the model's top 250 alerts a day, 47.7%.
+**Decision:** In Part 4c, the rules become reason codes that explain the model's alerts, rather than a second detector.
