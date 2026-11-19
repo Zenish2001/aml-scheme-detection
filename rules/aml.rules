@@ -1,0 +1,21 @@
+# Hand-written AML rules, built from the findings of Parts 2 and 3.
+#
+# Each rule is:   rule "name": condition
+# A condition compares features with ==, !=, >, >=, < or <=, and combines comparisons with and, or, not
+# and brackets. "and" binds tighter than "or", as in arithmetic. Text goes in "quotes". A # starts a comment.
+# The features are the columns of data/clean/features_graph, described in docs/data.md.
+
+rule "New payee, receiver sent nothing in 24 hours":
+  pairPayments7d == 0 and receiverSent24hCount == 0 and isSelfTransfer == 0
+
+rule "New payee, over $5,000":
+  pairPayments7d == 0 and amountPaidUsd > 5000
+
+rule "A network shape: loop or go-between":
+  reciprocal7d > 0 or cyclePaths7d > 0 or scatterGatherPaths7d > 0
+
+rule "Passed on within an hour, by ACH, to a new payee":
+  senderMinutesSinceReceived < 60 and format == "ACH" and pairPayments7d == 0
+
+rule "Just under $10,000, to a new payee":
+  isJustUnder10k == 1 and pairPayments7d == 0
