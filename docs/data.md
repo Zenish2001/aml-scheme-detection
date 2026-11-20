@@ -110,3 +110,7 @@ One row per labelled transaction in time steps 35-49: `txId`, `timeStep`, `label
 ## `data/clean/li-small/`: LI-Small, for the transfer test
 
 Built by `TransferMain` from `data/raw/LI-Small_Trans.csv`, in the same steps as HI-Small: `features` (29 features), `features_graph` (all 34), and `scores` (the HI-Small Stage 1 model's scores on Sep 6-10, with `txnId`, `day`, `isLaundering`, `scheme` and `score`). Without the patterns file, every laundering transaction's scheme is UNASSIGNED.
+
+## `data/models/stage1-trees.txt`: the Stage 1 model, outside Spark
+
+The Stage 1 model's 120 trees as text, written by `ModelExportMain`: one line per input (`numeric <feature>`, `format <payment format>`), then for each tree `tree <weight>` and its nodes, each before its left and right branches (`split <input> <threshold>`, `category <input> <values>` or `leaf <value>`). Read by `ScoringModel.load`.
