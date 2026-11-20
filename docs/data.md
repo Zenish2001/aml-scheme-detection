@@ -94,3 +94,11 @@ One row per transaction from Sep 6 onwards, the days the model didn't train on: 
 ## `data/clean/alerts`: explained alerts
 
 The top 100 alerts of each test day (Sep 7-10), one row each: `txnId`, `day`, `ts`, `senderAccount`, `receiverAccount`, `amountPaidUsd`, `format`, `score`, `rank` (within its day), `isLaundering`, `scheme`, and `reasons`: a list of `text` and `lift`, strongest first. The same alerts are saved as JSON in `data/clean/alerts_json`, for the live monitor and the dashboard.
+
+## `data/clean/cases`: laundering payments grouped into cases
+
+One row per laundering payment: `txnId`, `caseId`, `caseScheme` (the scheme the case's shape looks like), `caseWhy` (the shape, in words), `scheme` (IBM's label) and `attemptId` (its IBM attempt, if it's listed). Cases are payments that share an account within 3 days.
+
+## `data/clean/scheme_predictions`: Stage 2 predictions
+
+One row per laundering payment: `txnId`, `day`, `period`, `scheme`, and the Stage 2 model's `predictedScheme` and `confidence`.

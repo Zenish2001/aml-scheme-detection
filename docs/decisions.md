@@ -152,3 +152,25 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 **Decision:** Each reason's lift is measured on the training days: how many times more common laundering is among the transactions it matches than among all of them. Only reasons with a lift of at least 1.5 are shown, strongest first, each with its lift.
 **Why:** A reason that doesn't make laundering more likely misleads an analyst. Measuring on the training days leaves the test days unseen.
 **Evidence:** 7 of 13 reasons are kept, from loops (543.8x) to new payees (1.7x). Six are set aside, including money passed on within an hour (0.9x) and 3 times the sender's average payment (1.0x). On the test days' top 100 alerts a day, every caught laundering alert still has at least two reasons, and the 13 alerts with no reason are all false alarms. "Paid by ACH" (7.4x) reflects this simulator, where the listed schemes nearly always use ACH.
+
+## 29. Naming the scheme from one payment is a weak baseline
+
+**Finding:** The Stage 2 model (a balanced random forest, chosen on the validation day) names the right scheme for 34.5% of the listed laundering on the test days, against 19.6% for always guessing the commonest scheme. Macro F1 is 0.315. SCATTER-GATHER is named best (F1 0.571), and RANDOM worst (0.161).
+**Why:** A scheme belongs to a group of payments, and single payments from different schemes look alike: 61 of 117 FAN-IN payments were taken for GATHER-SCATTER, whose first half is a fan-in; 46 of 129 FAN-OUT payments for SCATTER-GATHER, whose first half is a fan-out; and 78 of 234 STACK payments for BIPARTITE.
+**Next:** Name the scheme from the shape of whole cases (decision 30).
+
+## 30. Name the scheme from a case's shape, not from one payment
+
+**Decision:** `Cases.shapeOf` names the scheme of a group of payments from who paid whom (a loop, one account paying many, go-betweens, layers and so on), with readable rules that learn nothing from the data, and gives its reason.
+**Evidence:** With IBM's attempts as cases, the shape names the scheme for 94.4% of test-day payments, against 34.5% for the Stage 2 model (macro F1 0.938 against 0.315). Of the 79 attempts named wrongly, 65 have 3 payments or fewer, too few to show a shape.
+
+## 31. Group cases by accounts shared within 3 days
+
+**Decision:** Payments that share an account within 3 days, directly or through a chain, form a case. The window was chosen on Sep 1-6 from 1, 3, 7 and 14 days and no limit.
+**Evidence:** With 3 days, 83.5% of IBM's attempts stay whole and 93.1% of cases are exactly one attempt; 53.5% of test-day payments are named right by their case's shape. Longer windows merge unrelated attempts.
+**Limit:** Even with no time limit, 14% of attempts stay split, so their pieces share no account. Most BIPARTITE and STACK attempts come apart (219 and 205 cases from 49 and 43 attempts): their payments are linked only by IBM's bookkeeping, and no grouping by accounts can rebuild them.
+
+## 32. The unlisted laundering is mostly isolated payments
+
+**Finding:** 1,282 of the 1,306 cases made only of unlisted (UNASSIGNED) laundering are single payments, connected to no other laundering. So most of it has no network shape to find.
+**Next:** The live monitor will name a case by its shape when it has enough payments, and fall back on the Stage 2 model for single payments.
