@@ -174,3 +174,23 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 
 **Finding:** 1,282 of the 1,306 cases made only of unlisted (UNASSIGNED) laundering are single payments, connected to no other laundering. So most of it has no network shape to find.
 **Next:** The live monitor will name a case by its shape when it has enough payments, and fall back on the Stage 2 model for single payments.
+
+## 33. The Stage 1 results hold on every test day
+
+**Finding:** Precision at the top 100 alerts a day is 82-87% on each of Sep 7-10, and PR-AUC 0.23-0.37. Including the tail would lift PR-AUC from 0.269 to 0.391, which is why it's always reported apart.
+
+## 34. The midnight pattern is routine internal transfers; hourOfDay stays out for good
+
+**Finding:** In the hour after midnight UTC, 39.3% of normal payments are self-transfers (7.7% at other hours), 40.5% are within one bank (9.8%), and 37.2% are reinvestments (5.5%). Only 0.4% are at exactly 00:00, so they aren't scheduled to the minute.
+**Decision:** `hourOfDay` stays out. Its signal is already in `isSelfTransfer`, `isSameBank` and the payment format, and it's a habit of the simulator. This closes decision 24.
+
+## 35. Bitcoin laundering is a blind spot
+
+**Finding:** On the test days, 22 laundering payments went through Bitcoin and the top 100 alerts a day caught none of them, against 17.2% of the 1,970 bank ones. Bitcoin laundering is rare in this data (all of it unlisted), so the model learned bank patterns.
+**Next:** A real system would need a model for each rail; Elliptic (decision 36) shows a Bitcoin model can work.
+
+## 36. On Elliptic's real data, the methods hold
+
+**Decision:** With the paper's split (learn from time steps 1-34, test on 35-49), models were chosen on steps 30-34 after learning from 1-29, so the test steps stayed unseen. The time step is never a feature.
+**Evidence:** A random forest on all features reaches an illicit F1 of 0.825 (precision 96.2%, recall 72.2%), against 0.788 in Weber et al. (2019); on local features only, 0.792 against 0.694. Logistic regression is far below the paper's (0.112 against 0.457), as it wasn't tuned.
+**Finding:** After the dark market shut down at step 43, F1 falls from 0.912 to 0.032, as the paper found: a model trained on the past fails when criminals change behaviour.

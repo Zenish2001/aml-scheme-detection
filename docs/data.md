@@ -102,3 +102,7 @@ One row per laundering payment: `txnId`, `caseId`, `caseScheme` (the scheme the 
 ## `data/clean/scheme_predictions`: Stage 2 predictions
 
 One row per laundering payment: `txnId`, `day`, `period`, `scheme`, and the Stage 2 model's `predictedScheme` and `confidence`.
+
+## `data/clean/elliptic/scores`: Elliptic test scores
+
+One row per labelled transaction in time steps 35-49: `txId`, `timeStep`, `label` (1.0 for illicit) and `score`, the chosen random forest's probability that it's illicit.
