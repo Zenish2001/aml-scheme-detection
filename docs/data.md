@@ -90,3 +90,7 @@ The columns of `data/clean/features`, plus 5 graph features about the 7 days (16
 ## `data/clean/scores`: Stage 1 scores
 
 One row per transaction from Sep 6 onwards, the days the model didn't train on: `txnId`, `day`, `period` (validation, test or tail), `isLaundering`, `scheme`, and `score`, the model's probability of laundering from 0 to 1. The model itself is saved in `data/models/stage1`.
+
+## `data/clean/alerts`: explained alerts
+
+The top 100 alerts of each test day (Sep 7-10), one row each: `txnId`, `day`, `ts`, `senderAccount`, `receiverAccount`, `amountPaidUsd`, `format`, `score`, `rank` (within its day), `isLaundering`, `scheme`, and `reasons`: a list of `text` and `lift`, strongest first. The same alerts are saved as JSON in `data/clean/alerts_json`, for the live monitor and the dashboard.
