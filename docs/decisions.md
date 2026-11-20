@@ -201,3 +201,9 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 **Finding:** The HI-Small model reaches a PR-AUC of 0.036 (random guessing: 0.0006), and 44.0% of its top 25 alerts a day are laundering. A model trained on LI-Small's own first 5 days, with the same settings, does slightly worse (0.029, 39.2%), so not retraining costs nothing here: HI-Small has twice as much laundering to learn from.
 **Why it's lower than on HI-Small (0.269):** LI-Small is harder even for its own model. Its laundering is half as common, and more of it may be disguised as ordinary payments, with no network shape to find. The rules lose recall too (52.0% to 42.6% for the first), and the model still beats each at the same number of alerts.
 **Data checks:** 6,924,049 rows read and 0 rejected; one published table lists 6,924,055. All 15 currencies have rates, identical to HI-Small's.
+
+## 38. Serve the model without Spark
+
+**Decision:** The Stage 1 model's trees are exported to a text file, `data/models/stage1-trees.txt`, and `ScoringModel` (in `common`) scores payments from it in plain Scala, using Spark's own formula for the probability.
+**Why:** The live monitor scores one payment at a time, as it arrives. Starting Spark takes seconds and gigabytes, far too heavy for that.
+**Evidence:** 120 trees and 27,382 nodes (594 KB). On 18,344 test-day payments, the largest difference from Spark's score is 4.44e-16, from adding up the trees in a different order, and none differ by more than 1e-9. Scoring takes 3.0 microseconds per payment (median; 4.1 at the 99th percentile), about 338,000 payments a second on one core.
