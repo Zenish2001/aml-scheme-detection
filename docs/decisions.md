@@ -194,3 +194,10 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 **Decision:** With the paper's split (learn from time steps 1-34, test on 35-49), models were chosen on steps 30-34 after learning from 1-29, so the test steps stayed unseen. The time step is never a feature.
 **Evidence:** A random forest on all features reaches an illicit F1 of 0.825 (precision 96.2%, recall 72.2%), against 0.788 in Weber et al. (2019); on local features only, 0.792 against 0.694. Logistic regression is far below the paper's (0.112 against 0.457), as it wasn't tuned.
 **Finding:** After the dark market shut down at step 43, F1 falls from 0.912 to 0.032, as the paper found: a model trained on the past fails when criminals change behaviour.
+
+## 37. The model works on data it has never seen, which is harder
+
+**Test:** The whole pipeline ran on LI-Small, a separate IBM simulator run with rarer laundering (1 in 1,942 payments, against 1 in 981 in HI-Small), and the HI-Small Stage 1 model scored its Sep 6-10 days without retraining.
+**Finding:** The HI-Small model reaches a PR-AUC of 0.036 (random guessing: 0.0006), and 44.0% of its top 25 alerts a day are laundering. A model trained on LI-Small's own first 5 days, with the same settings, does slightly worse (0.029, 39.2%), so not retraining costs nothing here: HI-Small has twice as much laundering to learn from.
+**Why it's lower than on HI-Small (0.269):** LI-Small is harder even for its own model. Its laundering is half as common, and more of it may be disguised as ordinary payments, with no network shape to find. The rules lose recall too (52.0% to 42.6% for the first), and the model still beats each at the same number of alerts.
+**Data checks:** 6,924,049 rows read and 0 rejected; one published table lists 6,924,055. All 15 currencies have rates, identical to HI-Small's.

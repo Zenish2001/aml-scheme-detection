@@ -106,3 +106,7 @@ One row per laundering payment: `txnId`, `day`, `period`, `scheme`, and the Stag
 ## `data/clean/elliptic/scores`: Elliptic test scores
 
 One row per labelled transaction in time steps 35-49: `txId`, `timeStep`, `label` (1.0 for illicit) and `score`, the chosen random forest's probability that it's illicit.
+
+## `data/clean/li-small/`: LI-Small, for the transfer test
+
+Built by `TransferMain` from `data/raw/LI-Small_Trans.csv`, in the same steps as HI-Small: `features` (29 features), `features_graph` (all 34), and `scores` (the HI-Small Stage 1 model's scores on Sep 6-10, with `txnId`, `day`, `isLaundering`, `scheme` and `score`). Without the patterns file, every laundering transaction's scheme is UNASSIGNED.
