@@ -153,6 +153,12 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 **Why:** A reason that doesn't make laundering more likely misleads an analyst. Measuring on the training days leaves the test days unseen.
 **Evidence:** 7 of 13 reasons are kept, from loops (543.8x) to new payees (1.7x). Six are set aside, including money passed on within an hour (0.9x) and 3 times the sender's average payment (1.0x). On the test days' top 100 alerts a day, every caught laundering alert still has at least two reasons, and the 13 alerts with no reason are all false alarms. "Paid by ACH" (7.4x) reflects this simulator, where the listed schemes nearly always use ACH.
 
+## 29. Naming the scheme from one payment is a weak baseline
+
+**Finding:** The Stage 2 model (a balanced random forest, chosen on the validation day) names the right scheme for 34.5% of the listed laundering on the test days, against 19.6% for always guessing the commonest scheme. Macro F1 is 0.315. SCATTER-GATHER is named best (F1 0.571), and RANDOM worst (0.161).
+**Why:** A scheme belongs to a group of payments, and single payments from different schemes look alike: 61 of 117 FAN-IN payments were taken for GATHER-SCATTER, whose first half is a fan-in; 46 of 129 FAN-OUT payments for SCATTER-GATHER, whose first half is a fan-out; and 78 of 234 STACK payments for BIPARTITE.
+**Next:** Name the scheme from the shape of whole cases (decision 30).
+
 ## 30. Name the scheme from a case's shape, not from one payment
 
 **Decision:** `Cases.shapeOf` names the scheme of a group of payments from who paid whom (a loop, one account paying many, go-betweens, layers and so on), with readable rules that learn nothing from the data, and gives its reason.
