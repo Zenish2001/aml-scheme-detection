@@ -141,3 +141,14 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 
 **Finding:** Given the same number of alerts, the model catches more laundering than every rule: 24.4% against 4.4% for the most precise rule, and 88.4% against 75.4% for all five rules together. The most precise rule (money passed on within an hour, by ACH, to a new payee) is right 7.35% of the time; the model's top 250 alerts a day, 47.7%.
 **Decision:** In Part 4c, the rules become reason codes that explain the model's alerts, rather than a second detector.
+
+## 27. Reasons are rules whose text explains an alert
+
+**Decision:** Reasons live in `rules/reasons.rules`, in the rules language. A reason's name is the text an analyst reads, and `{feature}` in it is filled in with the transaction's value, such as "Money passed on {senderMinutesSinceReceived} minutes after it arrived". Alerts are explained in plain Scala (`Rules.matches`), as the live monitor will explain them.
+**Why:** An analyst can't act on a score alone. Reusing the rules language means no new parser, and reasons can be changed without touching code.
+
+## 28. A reason must make laundering at least 1.5 times as likely
+
+**Decision:** Each reason's lift is measured on the training days: how many times more common laundering is among the transactions it matches than among all of them. Only reasons with a lift of at least 1.5 are shown, strongest first, each with its lift.
+**Why:** A reason that doesn't make laundering more likely misleads an analyst. Measuring on the training days leaves the test days unseen.
+**Evidence:** 7 of 13 reasons are kept, from loops (543.8x) to new payees (1.7x). Six are set aside, including money passed on within an hour (0.9x) and 3 times the sender's average payment (1.0x). On the test days' top 100 alerts a day, every caught laundering alert still has at least two reasons, and the 13 alerts with no reason are all false alarms. "Paid by ACH" (7.4x) reflects this simulator, where the listed schemes nearly always use ACH.

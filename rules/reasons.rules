@@ -1,0 +1,43 @@
+# Reasons explain an alert in plain English. Each one is a rule, in the same language as rules/aml.rules:
+#   rule "the reason, as an analyst would read it": condition
+# {feature} in a reason is replaced by that transaction's value, such as {senderMinutesSinceReceived}.
+# ReasonsMain orders the reasons by how strongly each pointed to laundering on the training days, strongest first.
+
+rule "New payee: no payments to this receiver in the past week":
+  pairPayments7d == 0
+
+rule "Money passed on {senderMinutesSinceReceived} minutes after it arrived":
+  senderMinutesSinceReceived < 60
+
+rule "The sender is passing on most of what it received in the past day":
+  senderPassThrough24h >= 0.8
+
+rule "{amountVsSenderAverage24h} times the sender's average payment in the past day":
+  amountVsSenderAverage24h >= 3
+
+rule "Large payment: ${amountPaidUsd}":
+  amountPaidUsd >= 10000
+
+rule "Just under the $10,000 reporting threshold":
+  isJustUnder10k == 1
+
+rule "The receiver collects money but has sent none in the past day":
+  receiverRecv24hCount >= 3 and receiverSent24hCount == 0
+
+rule "The receiver took money from {receiverRecv24hParties} accounts in the past day":
+  receiverRecv24hParties >= 5
+
+rule "The sender paid {senderSent24hParties} accounts in the past day":
+  senderSent24hParties >= 5 and senderSent24hParties <= 100
+
+rule "The receiver paid the sender in the past week: money going back and forth":
+  reciprocal7d > 0
+
+rule "Closes a loop: the money comes back to the sender in 3 steps":
+  cyclePaths7d > 0
+
+rule "One of several go-betweens carrying money from one source to this receiver":
+  scatterGatherPaths7d > 0
+
+rule "Paid by ACH":
+  format == "ACH"

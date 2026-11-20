@@ -61,7 +61,7 @@ object RulesMain {
   }
 
   /** What's wrong with a comparison, if anything: a feature that doesn't exist, or a value of the wrong kind. */
-  private def problemWith(schema: StructType, compare: Compare): Option[String] =
+  private[batch] def problemWith(schema: StructType, compare: Compare): Option[String] =
     schema.find(_.name == compare.feature) match {
       case None => Some(s"there's no feature called ${compare.feature}")
       case Some(field) =>
