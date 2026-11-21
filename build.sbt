@@ -49,6 +49,8 @@ lazy val monitor = (project in file("monitor")).dependsOn(common).settings(
   libraryDependencies ++= Seq(
     "com.typesafe.akka" %% "akka-actor-typed"         % akkaVersion,
     "com.typesafe.akka" %% "akka-stream"              % akkaVersion,
+    "com.typesafe.akka" %% "akka-http"                % "10.5.3",
+    "com.typesafe.akka" %% "akka-http"                % "10.5.3",
     "ch.qos.logback"     % "logback-classic"          % "1.4.14",
     "com.typesafe.akka" %% "akka-actor-testkit-typed" % akkaVersion % Test,
     scalaTest))

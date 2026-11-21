@@ -217,3 +217,9 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 
 **Decision:** The 34 features come from the batch pipeline, exported with each payment in the replay file. The monitor scores, explains and groups payments live, one at a time, with no Spark.
 **Why:** The features need a week of history per account, and the graph features need paths between accounts. Computing them as payments arrive would need a streaming feature store, which is a project in itself. Any IBM-format file can be prepared with `TransferMain` and `ReplayExportMain`, then streamed.
+
+## 41. A dashboard that explains itself
+
+**Decision:** `LiveDashboard` serves a web page with Akka HTTP. Alerts reach it as they happen (server-sent events), with running totals four times a second, and it asks the `CaseKeeper` actor for cases. The page is written for someone new to AML: a plain explanation, a guide to reading it, drawings of the 8 shapes, explanations on hover, alerts that open to show why they were flagged and the facts behind them, and cases that open to show their money drawn as a network.
+**Controls:** pause, speed, and the alert threshold, which can move while the replay runs. A "with this threshold" line shows its alerts a day and how many are real, so the trade-off every bank faces is visible at once.
+**Also:** the page is sent with `Cache-Control: no-store`, so a browser never shows an old copy of it after an update.
