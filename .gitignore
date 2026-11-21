@@ -24,3 +24,7 @@ metastore_db/
 .env
 *.token
 .DS_Store
+
+# Written by the live monitor (Part 7)
+data/replay/
+data/live/
