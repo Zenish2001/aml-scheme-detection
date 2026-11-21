@@ -207,3 +207,13 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 **Decision:** The Stage 1 model's trees are exported to a text file, `data/models/stage1-trees.txt`, and `ScoringModel` (in `common`) scores payments from it in plain Scala, using Spark's own formula for the probability.
 **Why:** The live monitor scores one payment at a time, as it arrives. Starting Spark takes seconds and gigabytes, far too heavy for that.
 **Evidence:** 120 trees and 27,382 nodes (594 KB). On 18,344 test-day payments, the largest difference from Spark's score is 4.44e-16, from adding up the trees in a different order, and none differ by more than 1e-9. Scoring takes 3.0 microseconds per payment (median; 4.1 at the 99th percentile), about 338,000 payments a second on one core.
+
+## 39. The live monitor: Akka Streams and one actor
+
+**Decision:** `LiveMonitor` streams payments one at a time with Akka Streams, scores each with the exported trees, explains those above the threshold with the kept reasons, and sends them to the `CaseKeeper` actor, which groups alerts into cases by shape. The threshold is the score of the 100th highest payment on the validation day, so the test days stay unseen.
+**Evidence:** On the 4 test days, 1,828,316 payments in 12.1 s, 150,535 a second, reading the file included; 2.8 microseconds per decision (median; 4.2 at the 99th percentile). 335 alerts (83 a day), 88.7% of them real laundering, grouped into 89 cases, the largest a cycle of 21 alerts, all laundering. These agree with the batch results (84.5% precision at 100 alerts a day).
+
+## 40. Features are computed in batch; decisions are made live
+
+**Decision:** The 34 features come from the batch pipeline, exported with each payment in the replay file. The monitor scores, explains and groups payments live, one at a time, with no Spark.
+**Why:** The features need a week of history per account, and the graph features need paths between accounts. Computing them as payments arrive would need a streaming feature store, which is a project in itself. Any IBM-format file can be prepared with `TransferMain` and `ReplayExportMain`, then streamed.

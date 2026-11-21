@@ -114,3 +114,9 @@ Built by `TransferMain` from `data/raw/LI-Small_Trans.csv`, in the same steps as
 ## `data/models/stage1-trees.txt`: the Stage 1 model, outside Spark
 
 The Stage 1 model's 120 trees as text, written by `ModelExportMain`: one line per input (`numeric <feature>`, `format <payment format>`), then for each tree `tree <weight>` and its nodes, each before its left and right branches (`split <input> <threshold>`, `category <input> <values>` or `leaf <value>`). Read by `ScoringModel.load`.
+
+## `data/replay/<dataset>`, `data/models/monitor-settings.txt` and `data/live/alerts.jsonl`: the live monitor
+
+- `data/replay/<dataset>`: one CSV file, written by `ReplayExportMain`: every payment to stream, in time order, with `minute`, `time`, `txnId`, the accounts, `format`, `isLaundering`, `scheme` (NONE for normal payments) and the 34 features.
+- `data/models/monitor-settings.txt`: `threshold <score>`, then `reason <lift> <reason text>` for each reason kept.
+- `data/live/alerts.jsonl`: each alert the monitor raised, one JSON object a line: `txnId`, `time`, `sender`, `receiver`, `amountUsd`, `format`, `score`, `reasons` (`text` and `lift`), `isLaundering` and `scheme`.
