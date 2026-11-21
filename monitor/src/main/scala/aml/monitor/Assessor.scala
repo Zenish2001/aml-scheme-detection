@@ -35,10 +35,13 @@ final case class Decision(payment: LivePayment, score: Double, isAlert: Boolean,
   */
 final class Assessor(model: ScoringModel, threshold: Double, reasons: Seq[(Rule, Double)]) {
 
-  def assess(p: LivePayment): Decision = {
+  def assess(p: LivePayment): Decision = assessAt(p, threshold)
+
+  /** The same, with a different alert threshold, which the dashboard's slider can change while it runs. */
+  def assessAt(p: LivePayment, alertAt: Double): Decision = {
     val start = System.nanoTime()
     val score = model.score(p.features)
-    val alert = score >= threshold
+    val alert = score >= alertAt
     val explained =
       if (!alert) Nil
       else reasons.collect { case (r, lift) if Rules.matches(r.condition, p.features) => Reasons.render(r.name, p.features) -> lift }
