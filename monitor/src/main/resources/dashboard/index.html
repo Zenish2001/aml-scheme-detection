@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live AML monitor</title>
+<style>
+  :root {
+    --bg: #FFFFFF;
+    --surface: #F6F8FA;
+    --text: #1F2328;
+    --muted: #59636E;
+    --border: #D1D9E0;
+    --accent: #0969DA;
+    --laundering: #CF222E;
+    --alarm: #8C959F;
+    --bar: #AFB8C1;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0D1117;
+      --surface: #161B22;
+      --text: #E6EDF3;
+      --muted: #9198A1;
+      --border: #30363D;
+      --accent: #4493F8;
+      --laundering: #F85149;
+      --alarm: #6E7681;
+      --bar: #3D444D;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px; line-height: 1.55; font-variant-numeric: tabular-nums;
+    max-width: 1240px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 40px) 40px;
+  }
+  h1 { font-size: 26px; line-height: 1.2; margin: 0 0 6px; font-weight: 650; }
+  h2 { font-size: 17px; margin: 0 0 10px; font-weight: 650; }
+  h3 { font-size: 15px; margin: 18px 0 8px; font-weight: 650; }
+  p { margin: 0; }
+  .muted { color: var(--muted); }
+  .intro { max-width: 75ch; }
+  #status { color: var(--muted); margin-top: 6px; }
+
+  button, .button {
+    font: inherit; font-weight: 550; color: var(--accent); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, input:focus-visible, summary:focus-visible, .term:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  button:disabled { color: var(--muted); border-color: var(--border); cursor: default; }
+
+  /* Hover explanations */
+  .term { border-bottom: 1px dotted var(--muted); cursor: help; position: relative; }
+  .term:hover::after, .term:focus::after {
+    content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px); z-index: 10;
+    width: max-content; max-width: 300px; padding: 8px 10px; border-radius: 6px;
+    background: var(--text); color: var(--bg); font-size: 13px; font-weight: 400; line-height: 1.45; white-space: normal;
+  }
+
+  details.guide { margin: 18px 0 0; border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; background: var(--surface); }
+  details.guide summary { cursor: pointer; font-weight: 600; }
+  details.guide ul { margin: 10px 0 0; padding-left: 20px; max-width: 80ch; }
+  details.guide li { margin: 4px 0; }
+  .schemes { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 6px; }
+  .scheme { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+  .scheme svg { display: block; width: 100%; height: 72px; }
+  .scheme strong { display: block; margin-top: 6px; }
+  .scheme p { font-size: 13px; color: var(--muted); }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-end; margin: 20px 0 6px; }
+  .control { display: flex; flex-direction: column; gap: 4px; }
+  .control label { font-weight: 550; }
+  .control input[type=range] { width: 240px; accent-color: var(--accent); }
+  .control .hint { font-size: 13px; color: var(--muted); max-width: 300px; }
+  .control-buttons { display: flex; gap: 8px; }
+
+  .strip { margin: 16px 0 24px; }
+  .strip canvas { display: block; width: 100%; height: 140px; }
+  .strip .legend { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+  main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 32px; align-items: start; }
+  @media (max-width: 880px) { main { grid-template-columns: 1fr; } }
+
+  #alerts, #cases { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .item {
+    display: block; width: 100%; text-align: left; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-left: 4px solid var(--laundering); border-radius: 6px; padding: 8px 12px;
+  }
+  .item.alarm { border-left-color: var(--alarm); }
+  .item:hover { border-top-color: var(--accent); border-right-color: var(--accent); border-bottom-color: var(--accent); }
+  .item .top { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; }
+  .item .amount { font-weight: 650; }
+  .item .small { font-size: 13px; color: var(--muted); }
+  .tag { font-size: 13px; font-weight: 550; }
+  .tag.real { color: var(--laundering); }
+  .tag.alarm { color: var(--muted); }
+  .score { display: inline-flex; align-items: center; gap: 6px; }
+  .score .track { width: 80px; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .score .fill { height: 100%; background: var(--laundering); }
+
+  aside { display: flex; flex-direction: column; gap: 28px; }
+  dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; text-align: right; font-weight: 600; }
+
+  dialog { width: min(760px, 94vw); max-height: 90vh; border: 1px solid var(--border); border-radius: 10px; padding: 0; color: var(--text); background: var(--bg); }
+  dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+  .dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); }
+  .dialog-head h2 { margin: 0; }
+  .dialog-body { padding: 16px 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .dialog-body table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .dialog-body th, .dialog-body td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .dialog-body th { color: var(--muted); font-weight: 550; }
+  .dialog-body td.num { text-align: right; }
+  .network { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .network svg { display: block; width: 100%; }
+  .reasons { margin: 0; padding-left: 20px; }
+  .reasons li { margin: 6px 0; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 32px; max-width: 85ch; }
+  .empty { color: var(--muted); }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Live AML monitor</h1>
+  <p class="intro">A bank handles millions of payments a day, and a few of them are money laundering: criminals moving dirty money through accounts until it looks clean. This monitor checks every payment as it arrives, flags the suspicious ones, explains why, and groups connected alerts into cases.</p>
+  <p id="status">Connecting to the monitor…</p>
+</header>
+
+<details class="guide" open>
+  <summary>New here? How to read this page</summary>
+  <ul>
+    <li><strong>The strip</strong> shows the last 24 hours of payments as grey bars. Each red dot is an alert that really was laundering; each grey ring is a false alarm.</li>
+    <li><strong>Alerts</strong> are payments the model found suspicious enough to show an analyst. Click one to see why it was flagged.</li>
+    <li><strong>Cases</strong> are alerts that share an account within 3 days. Click one to see the money drawn as a network of accounts.</li>
+    <li><strong>The controls</strong> pause the replay, change its speed, and move the alert threshold, so you can see the trade-off every bank faces: more alerts catch more laundering, but waste more of an analyst’s time.</li>
+    <li>This replays four days of IBM’s simulated bank payments, so we know which payments really were laundering. A real bank wouldn’t know.</li>
+  </ul>
+  <h3>The 8 shapes laundering takes</h3>
+  <div class="schemes" id="schemes"></div>
+</details>
+
+<section class="controls" aria-label="Controls">
+  <div class="control-buttons">
+    <button id="pause" type="button">Pause</button>
+    <button id="stop" type="button">Stop the monitor</button>
+  </div>
+  <div class="control">
+    <label for="speed">Speed: <span id="speedLabel">–</span> payments a second</label>
+    <input id="speed" type="range" min="1000" max="100000" step="1000" value="20000">
+    <span class="hint">How fast the four days are replayed.</span>
+  </div>
+  <div class="control">
+    <label for="threshold"><span class="term" tabindex="0" data-tip="The model gives every payment a score from 0 to 1. Payments scoring at or above this threshold become alerts.">Alert threshold</span>: <span id="thresholdLabel">–</span></label>
+    <input id="threshold" type="range" min="0.5" max="0.999" step="0.001" value="0.943">
+    <span class="hint">Higher: fewer alerts, more of them real. Lower: more laundering caught, more false alarms.</span>
+  </div>
+  <button id="resetThreshold" type="button">Reset the threshold</button>
+</section>
+
+<section class="strip" aria-label="Payments and alerts over the last 24 hours of the replay">
+  <canvas id="strip"></canvas>
+  <p class="legend">The last 24 hours of the replay. Grey bars: payments checked each hour. Red dots: alerts that were real laundering. Grey rings: false alarms.</p>
+</section>
+
+<main>
+  <section aria-labelledby="alerts-title">
+    <h2 id="alerts-title">Alerts, newest first</h2>
+    <p id="noAlerts" class="empty">No alerts yet. A payment appears here the moment its score reaches the alert threshold.</p>
+    <ul id="alerts"></ul>
+  </section>
+
+  <aside>
+    <section aria-labelledby="totals-title">
+      <h2 id="totals-title">So far</h2>
+      <dl>
+        <dt>Payments checked</dt><dd id="payments">0</dd>
+        <dt>Alerts</dt><dd id="alertCount">0</dd>
+        <dt><span class="term" tabindex="0" data-tip="Out of all alerts, the share that really were laundering. Analysts have limited time, so this should be high.">Alerts that were real laundering</span></dt><dd id="precision">–</dd>
+        <dt><span class="term" tabindex="0" data-tip="Out of all the laundering payments so far, the share that became alerts.">Laundering caught</span></dt><dd id="recall">–</dd>
+        <dt><span class="term" tabindex="0" data-tip="Since the threshold was last set: how many alerts a day it gives, and how many of them are real laundering.">With this threshold</span></dt><dd id="since">–</dd>
+        <dt><span class="term" tabindex="0" data-tip="How long the monitor takes to score one payment and explain it, in millionths of a second.">Time to decide</span></dt><dd id="micros">–</dd>
+        <dt>Payments a second, now</dt><dd id="speedNow">–</dd>
+      </dl>
+    </section>
+    <section aria-labelledby="cases-title">
+      <h2 id="cases-title"><span class="term" tabindex="0" data-tip="Alerts that share an account within 3 days are grouped, because laundering moves money through several accounts. Each case is named by the shape of its payments.">Cases</span></h2>
+      <p id="casesTotal" class="muted">No cases yet.</p>
+      <ul id="cases"></ul>
+    </section>
+  </aside>
+</main>
+
+<footer>Scores come from the Stage 1 model’s 120 decision trees, run in plain Scala; reasons come from rules/reasons.rules, and each reason’s strength (its <span class="term" tabindex="0" data-tip="How many times more common laundering was among past payments matching the reason than among all payments.">lift</span>) was measured on the training days.</footer>
+
+<dialog id="detail" aria-labelledby="detailTitle">
+  <div class="dialog-head">
+    <h2 id="detailTitle"></h2>
+    <button id="closeDetail" type="button">Close</button>
+  </div>
+  <div class="dialog-body" id="detailBody"></div>
+</dialog>
+
+<script>
+  const number = new Intl.NumberFormat('en-US');
+  const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const $ = id => document.getElementById(id);
+  const MaxAlerts = 60;
+  const SVGNS = 'http://www.w3.org/2000/svg';
+
+  // The 8 schemes, in plain words, with a small drawing of each
+  const SCHEMES = {
+    'FAN-OUT': { name: 'Fan-out', text: 'One account sends money to many accounts at once.',
+      nodes: { a: [20, 40], b: [100, 8], c: [100, 30], d: [100, 52], e: [100, 74] }, edges: [['a', 'b'], ['a', 'c'], ['a', 'd'], ['a', 'e']] },
+    'FAN-IN': { name: 'Fan-in', text: 'Many accounts send money into one account.',
+      nodes: { a: [100, 40], b: [20, 8], c: [20, 30], d: [20, 52], e: [20, 74] }, edges: [['b', 'a'], ['c', 'a'], ['d', 'a'], ['e', 'a']] },
+    'CYCLE': { name: 'Cycle', text: 'Money moves around a loop and comes back to where it started.',
+      nodes: { a: [30, 12], b: [95, 12], c: [95, 68], d: [30, 68] }, edges: [['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'a']] },
+    'SCATTER-GATHER': { name: 'Scatter-gather', text: 'One account pays several go-betweens, who all pay one final account.',
+      nodes: { a: [12, 40], b: [60, 10], c: [60, 40], d: [60, 70], z: [108, 40] }, edges: [['a', 'b'], ['a', 'c'], ['a', 'd'], ['b', 'z'], ['c', 'z'], ['d', 'z']] },
+    'GATHER-SCATTER': { name: 'Gather-scatter', text: 'Several accounts pay one account, which then pays several others.',
+      nodes: { a: [12, 10], b: [12, 40], c: [12, 70], h: [60, 40], x: [108, 10], y: [108, 40], z: [108, 70] },
+      edges: [['a', 'h'], ['b', 'h'], ['c', 'h'], ['h', 'x'], ['h', 'y'], ['h', 'z']] },
+    'STACK': { name: 'Stack', text: 'Money passes through layers of accounts, each layer paying the next.',
+      nodes: { a: [12, 22], b: [12, 58], c: [60, 22], d: [60, 58], e: [108, 22], f: [108, 58] },
+      edges: [['a', 'c'], ['a', 'd'], ['b', 'd'], ['c', 'e'], ['d', 'f'], ['d', 'e']] },
+    'BIPARTITE': { name: 'Bipartite', text: 'One group of accounts pays another group, with no one in between.',
+      nodes: { a: [22, 22], b: [22, 58], x: [98, 10], y: [98, 40], z: [98, 70] },
+      edges: [['a', 'x'], ['a', 'y'], ['b', 'y'], ['b', 'z'], ['a', 'z']] },
+    'RANDOM': { name: 'Random', text: 'Money takes an irregular path, or there’s too little to show a shape.',
+      nodes: { a: [10, 62], b: [42, 18], c: [74, 60], d: [108, 18] }, edges: [['a', 'b'], ['b', 'c'], ['c', 'd']] }
+  };
+  const schemeName = key => (SCHEMES[key] || { name: key ? key.toLowerCase() : 'Unlisted' }).name;
+
+  // Plain words for the facts behind an alert
+  const FACTS = [
+    ['pairPayments7d', 'Earlier payments to this receiver in the past week', v => v === 0 ? 'None: a new payee' : number.format(v)],
+    ['senderMinutesSinceReceived', 'Minutes since the sender last received money', v => v >= 10080 ? 'Over a week, or never' : number.format(v)],
+    ['receiverRecv24hParties', 'Different accounts that paid the receiver in the past day', v => number.format(v)],
+    ['senderSent24hParties', 'Different accounts the sender paid in the past day', v => number.format(v)],
+    ['amountVsSenderAverage24h', 'This payment compared with the sender’s usual payment', v => v < 0 ? 'No earlier payments to compare' : `${v.toFixed(1)} times`],
+    ['reciprocal7d', 'Payments from the receiver back to the sender in the past week', v => number.format(v)],
+    ['cyclePaths7d', 'Loops this payment closes, with the money returning in 3 steps', v => number.format(v)],
+    ['scatterGatherPaths7d', 'Other go-betweens carrying money from the same source to this receiver', v => number.format(v)]
+  ];
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function svg(tag, attrs) {
+    const e = document.createElementNS(SVGNS, tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => e.setAttribute(k, v));
+    return e;
+  }
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const shortAccount = a => { const p = a.split('|'); return p[p.length - 1].slice(-5); };
+  const minuteOf = time => Math.floor(Date.parse(time.replace(' ', 'T') + ':00Z') / 60000);
+  const sourceName = path => path.split('/').filter(Boolean).pop();
+
+  // Arrows between two points, stopping at the circles' edges
+  function arrow(group, from, to, r, color, marker, title) {
+    const dx = to[0] - from[0], dy = to[1] - from[1], len = Math.hypot(dx, dy) || 1;
+    const line = svg('line', { x1: from[0] + dx / len * r, y1: from[1] + dy / len * r, x2: to[0] - dx / len * (r + 3), y2: to[1] - dy / len * (r + 3),
+      stroke: color, 'stroke-width': 1.6, 'marker-end': `url(#${marker})` });
+    if (title) { const t = svg('title'); t.textContent = title; line.append(t); }
+    group.append(line);
+  }
+  function markers(root, id, color) {
+    const defs = svg('defs'), m = svg('marker', { id, viewBox: '0 0 10 10', refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' });
+    m.append(svg('path', { d: 'M0 0L10 5L0 10z', fill: color }));
+    defs.append(m); root.append(defs);
+  }
+
+  // The scheme gallery
+  Object.entries(SCHEMES).forEach(([key, s], i) => {
+    const box = el('div', 'scheme');
+    const root = svg('svg', { viewBox: '0 0 120 80', role: 'img', 'aria-label': s.name });
+    const id = `scheme-arrow-${i}`;
+    markers(root, id, css('--muted'));
+    const g = svg('g');
+    s.edges.forEach(([a, b]) => arrow(g, s.nodes[a], s.nodes[b], 6, css('--muted'), id));
+    Object.values(s.nodes).forEach(([x, y]) => g.append(svg('circle', { cx: x, cy: y, r: 6, fill: css('--bg'), stroke: css('--text'), 'stroke-width': 1.4 })));
+    root.append(g);
+    box.append(root, el('strong', null, s.name), el('p', null, s.text));
+    $('schemes').append(box);
+  });
+
+  // A case's payments, laid out left to right in the order money flows, or round a circle if it loops
+  function layout(payments) {
+    const nodes = [...new Set(payments.flatMap(p => [p.sender, p.receiver]))];
+    const pairs = new Map();
+    payments.filter(p => p.sender !== p.receiver).forEach(p => {
+      const k = p.sender + '>' + p.receiver;
+      if (!pairs.has(k)) pairs.set(k, { from: p.sender, to: p.receiver, payments: [] });
+      pairs.get(k).payments.push(p);
+    });
+    const edges = [...pairs.values()];
+    const waiting = new Map(nodes.map(n => [n, 0]));
+    edges.forEach(e => waiting.set(e.to, waiting.get(e.to) + 1));
+    const ready = nodes.filter(n => waiting.get(n) === 0), order = [];
+    while (ready.length) {
+      const n = ready.shift(); order.push(n);
+      edges.filter(e => e.from === n).forEach(e => { waiting.set(e.to, waiting.get(e.to) - 1); if (waiting.get(e.to) === 0) ready.push(e.to); });
+    }
+    const W = 680, pos = new Map();
+    let H;
+    if (order.length === nodes.length) {
+      const layer = new Map(nodes.map(n => [n, 0]));
+      order.forEach(n => edges.filter(e => e.from === n).forEach(e => layer.set(e.to, Math.max(layer.get(e.to), layer.get(n) + 1))));
+      const layers = Math.max(...layer.values()) + 1;
+      const columns = [...Array(layers)].map((_, i) => nodes.filter(n => layer.get(n) === i));
+      const tallest = Math.max(...columns.map(c => c.length));
+      H = Math.max(160, tallest * 46 + 40);
+      columns.forEach((col, i) => col.forEach((n, j) => pos.set(n, [
+        layers === 1 ? W / 2 : 60 + i * (W - 120) / (layers - 1),
+        (j + 1) * H / (col.length + 1)])));
+    } else {
+      // Follow the payments round the loop where possible, so the circle reads in order
+      const next = new Map(edges.map(e => [e.from, e.to]));
+      const ring = [], seen = new Set();
+      let n = nodes[0];
+      while (n && !seen.has(n)) { ring.push(n); seen.add(n); n = next.get(n); }
+      nodes.forEach(m => { if (!seen.has(m)) ring.push(m); });
+      H = 360;
+      const r = Math.min(140, 40 + ring.length * 12);
+      ring.forEach((m, i) => pos.set(m, [W / 2 + r * Math.cos(2 * Math.PI * i / ring.length - Math.PI / 2), H / 2 + r * Math.sin(2 * Math.PI * i / ring.length - Math.PI / 2)]));
+    }
+    return { nodes, edges, pos, W, H };
+  }
+
+  function drawNetwork(payments) {
+    const { nodes, edges, pos, W, H } = layout(payments);
+    const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'The case drawn as a network of accounts' });
+    markers(root, 'net-real', css('--laundering'));
+    markers(root, 'net-alarm', css('--alarm'));
+    const g = svg('g');
+    edges.forEach(e => {
+      const real = e.payments.some(p => p.real);
+      const total = e.payments.reduce((s, p) => s + (p.amountUsd || 0), 0);
+      arrow(g, pos.get(e.from), pos.get(e.to), 14, real ? css('--laundering') : css('--alarm'), real ? 'net-real' : 'net-alarm',
+        `${e.from} paid ${e.to}: ${e.payments.length} payment${e.payments.length > 1 ? 's' : ''}, ${dollars.format(total)}`);
+    });
+    nodes.forEach(n => {
+      const [x, y] = pos.get(n);
+      const c = svg('circle', { cx: x, cy: y, r: 14, fill: css('--bg'), stroke: css('--text'), 'stroke-width': 1.6 });
+      const t = svg('title'); t.textContent = n; c.append(t);
+      g.append(c);
+      if (nodes.length <= 24) {
+        const label = svg('text', { x, y: y + 28, 'text-anchor': 'middle', 'font-size': 12, fill: css('--muted') });
+        label.textContent = shortAccount(n);
+        g.append(label);
+      }
+    });
+    root.append(g);
+    const box = el('div', 'network'); box.append(root);
+    return box;
+  }
+
+  // The detail window
+  function openDetail(title, children) {
+    $('detailTitle').textContent = title;
+    $('detailBody').replaceChildren(...children);
+    if (!$('detail').open) $('detail').showModal();
+  }
+  $('closeDetail').addEventListener('click', () => $('detail').close());
+
+  function openAlert(a) {
+    const parts = [];
+    parts.push(el('p', null, `${a.sender} paid ${a.receiver} ${dollars.format(a.amountUsd)} by ${a.format}, on ${a.time}.`));
+    parts.push(el('p', null, `The model scored it ${a.score.toFixed(3)} out of 1. Payments scoring ${threshold.toFixed(3)} or more become alerts.`));
+    if (a.reasons.length) {
+      parts.push(el('h3', null, 'Why it was flagged'));
+      const ul = el('ul', 'reasons');
+      a.reasons.forEach(r => {
+        const li = el('li'); li.append(el('strong', null, r.text));
+        li.append(el('div', 'muted', `Among past payments like this, laundering was ${r.lift.toFixed(1)} times as common as usual.`));
+        ul.append(li);
+      });
+      parts.push(ul);
+    } else {
+      parts.push(el('p', 'muted', 'None of the reasons matched: the model flagged it from a combination of its features. Alerts without a reason were usually false alarms.'));
+    }
+    const rows = FACTS.filter(([k]) => k in a.facts);
+    if (rows.length) {
+      parts.push(el('h3', null, 'The facts the model saw'));
+      const table = el('table'), body = el('tbody');
+      rows.forEach(([k, label, show]) => { const tr = el('tr'); tr.append(el('td', null, label), el('td', 'num', show(a.facts[k]))); body.append(tr); });
+      table.append(body); parts.push(table);
+    }
+    parts.push(el('p', a.isLaundering ? 'tag real' : 'tag alarm',
+      a.isLaundering ? `In IBM’s labels, this really was laundering: ${schemeName(a.scheme)}.` : 'In IBM’s labels, this was a normal payment: a false alarm.'));
+    const see = el('button', null, 'See its case');
+    see.type = 'button';
+    see.addEventListener('click', () => openCase(a.txnId));
+    parts.push(see);
+    openDetail('Why this payment was flagged', parts);
+  }
+
+  function openCase(key) {
+    fetch(`/case?key=${key}`).then(r => r.ok ? r.json() : Promise.reject(r)).then(c => {
+      const info = SCHEMES[c.scheme];
+      const parts = [
+        el('p', null, `Its shape: ${c.why}.`),
+        el('p', 'muted', info ? `${info.name}: ${info.text}` : ''),
+        drawNetwork(c.payments),
+        el('p', 'muted', 'Circles are accounts, arrows are payments. Red arrows were real laundering, grey ones false alarms. Hover over an arrow or circle for details.')
+      ];
+      const table = el('table'), head = el('thead'), hr = el('tr');
+      ['Time', 'From', 'To', 'Amount', 'Score', 'In IBM’s labels'].forEach(h => hr.append(el('th', null, h)));
+      head.append(hr);
+      const body = el('tbody');
+      c.payments.forEach(p => {
+        const tr = el('tr');
+        tr.append(el('td', null, p.time), el('td', null, p.sender), el('td', null, p.receiver),
+          el('td', 'num', dollars.format(p.amountUsd)), el('td', 'num', p.score.toFixed(3)), el('td', p.real ? 'tag real' : 'tag alarm', p.real ? 'Laundering' : 'False alarm'));
+        body.append(tr);
+      });
+      table.append(head, body);
+      parts.push(table);
+      openDetail(`Case: ${schemeName(c.scheme)}, ${c.payments.length} alert${c.payments.length > 1 ? 's' : ''}`, parts);
+    }).catch(() => openDetail('Case', [el('p', 'muted', 'That case isn’t in the monitor any more. It may have ended when the monitor stopped.')]));
+  }
+
+  // Alerts and cases lists
+  const marks = [];
+  function addAlert(a) {
+    $('noAlerts').hidden = true;
+    const li = el('li');
+    const b = el('button', 'item' + (a.isLaundering ? '' : ' alarm'));
+    b.type = 'button';
+    const top = el('div', 'top');
+    const score = el('span', 'score small');
+    const track = el('span', 'track'), fill = el('span', 'fill');
+    fill.style.width = `${Math.round(a.score * 100)}%`; track.append(fill);
+    score.append(track, document.createTextNode(`score ${a.score.toFixed(3)}`));
+    top.append(el('span', 'amount', dollars.format(a.amountUsd)), el('span', 'small', `${a.format}, ${a.time}`), score);
+    b.append(top);
+    b.append(el('div', 'small', a.reasons.length ? a.reasons.map(r => r.text).join('; ') : 'No reason matched'));
+    b.append(el('div', 'tag ' + (a.isLaundering ? 'real' : 'alarm'), a.isLaundering ? `Real laundering: ${schemeName(a.scheme)}` : 'A false alarm'));
+    b.addEventListener('click', () => openAlert(a));
+    li.append(b);
+    const list = $('alerts');
+    list.prepend(li);
+    while (list.children.length > MaxAlerts) list.lastChild.remove();
+    marks.push({ minute: minuteOf(a.time), real: a.isLaundering });
+  }
+
+  function showCases(data) {
+    $('casesTotal').textContent = data.total
+      ? `${number.format(data.total)} cases so far, the largest first. Click one to see it drawn.`
+      : 'No cases yet.';
+    const list = $('cases'); list.replaceChildren();
+    data.cases.slice(0, 12).forEach(c => {
+      const li = el('li'), b = el('button', 'item' + (c.real ? '' : ' alarm'));
+      b.type = 'button';
+      const top = el('div', 'top');
+      top.append(el('span', 'amount', schemeName(c.scheme)), el('span', 'small', `${c.alerts} alert${c.alerts > 1 ? 's' : ''}, ${c.real} real laundering`));
+      b.append(top, el('div', 'small', c.why));
+      b.addEventListener('click', () => openCase(c.key));
+      li.append(b); list.append(li);
+    });
+  }
+
+  // Totals, status and controls
+  let threshold = 0.943, defaultThreshold = 0.943, paused = false, stopped = false, controlsReady = false;
+  function showTotals(s) {
+    threshold = s.threshold; defaultThreshold = s.defaultThreshold; paused = s.paused;
+    if (!controlsReady) {
+      $('speed').value = s.rate; $('threshold').value = s.threshold; controlsReady = true;
+    }
+    $('speedLabel').textContent = number.format(Number($('speed').value));
+    $('thresholdLabel').textContent = Number($('threshold').value).toFixed(3);
+    $('pause').textContent = s.paused ? 'Resume' : 'Pause';
+    $('payments').textContent = number.format(s.payments);
+    $('alertCount').textContent = number.format(s.alerts);
+    $('precision').textContent = s.alerts ? `${(100 * s.caught / s.alerts).toFixed(1)}%` : '–';
+    $('recall').textContent = s.laundering ? `${(100 * s.caught / s.laundering).toFixed(1)}% of ${number.format(s.laundering)}` : '–';
+    $('since').textContent = s.sinceMinutes >= 60
+      ? `${number.format(Math.round(s.sinceAlerts / (s.sinceMinutes / 1440)))} a day, ${s.sinceAlerts ? (100 * s.sinceCaught / s.sinceAlerts).toFixed(0) : 0}% real`
+      : 'Measuring…';
+    $('micros').textContent = s.payments ? `${s.averageMicros.toFixed(1)} µs` : '–';
+    $('speedNow').textContent = s.payments ? number.format(s.speed) : '–';
+    $('status').textContent = stopped ? $('status').textContent
+      : s.finished ? `Finished: all ${number.format(s.payments)} payments of ${sourceName(s.source)} replayed. The monitor stops on its own in 15 minutes, or now with the button.`
+      : s.paused ? 'Paused. Press Resume to carry on.'
+      : s.payments ? `Replaying ${sourceName(s.source)}, now at ${s.time}.`
+      : 'Starting the replay…';
+  }
+  function control(params) {
+    return fetch('/control?' + new URLSearchParams(params), { method: 'POST' }).then(r => r.json()).then(showTotals).catch(() => {});
+  }
+  $('pause').addEventListener('click', () => control({ pause: !paused }));
+  $('speed').addEventListener('input', () => { $('speedLabel').textContent = number.format(Number($('speed').value)); });
+  $('speed').addEventListener('change', () => control({ rate: $('speed').value }));
+  $('threshold').addEventListener('input', () => { $('thresholdLabel').textContent = Number($('threshold').value).toFixed(3); });
+  $('threshold').addEventListener('change', () => control({ threshold: $('threshold').value }));
+  $('resetThreshold').addEventListener('click', () => { $('threshold').value = defaultThreshold; control({ threshold: defaultThreshold }); });
+
+  // The strip: payments per hour, with alerts as dots
+  const hours = new Map();
+  let lastPayments = 0, nowMinute = 0;
+  function record(s) {
+    if (!s.minute) return;
+    const hour = Math.floor(s.minute / 60);
+    hours.set(hour, (hours.get(hour) || 0) + (s.payments - lastPayments));
+    lastPayments = s.payments; nowMinute = s.minute;
+  }
+  function draw() {
+    const canvas = $('strip'), ratio = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== Math.round(w * ratio)) { canvas.width = Math.round(w * ratio); canvas.height = Math.round(h * ratio); }
+    const g = canvas.getContext('2d');
+    g.setTransform(ratio, 0, 0, ratio, 0, 0); g.clearRect(0, 0, w, h);
+    const baseline = h - 18, top = 32;
+    g.strokeStyle = css('--border'); g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, baseline + 0.5); g.lineTo(w, baseline + 0.5); g.stroke();
+    if (!nowMinute) return;
+    const start = nowMinute - 24 * 60, x = m => ((m - start) / (24 * 60)) * w;
+    const firstHour = Math.floor(start / 60), lastHour = Math.floor(nowMinute / 60);
+    let most = 1;
+    for (let hr = firstHour; hr <= lastHour; hr++) most = Math.max(most, hours.get(hr) || 0);
+    g.fillStyle = css('--bar');
+    for (let hr = firstHour; hr <= lastHour; hr++) {
+      const n = hours.get(hr) || 0; if (!n) continue;
+      const bh = (n / most) * (baseline - top), left = Math.max(0, x(hr * 60) + 1), right = Math.min(w, x(hr * 60 + 60) - 1);
+      if (right > left) g.fillRect(left, baseline - bh, right - left, bh);
+    }
+    g.font = '12px system-ui, sans-serif'; g.fillStyle = css('--muted');
+    for (let hr = firstHour; hr <= lastHour + 1; hr++) {
+      if (hr % 6) continue;
+      const px = x(hr * 60); if (px < 0 || px > w - 70) continue;
+      const d = new Date(hr * 3600000);
+      g.fillText(`${d.toISOString().slice(5, 10)} ${String(d.getUTCHours()).padStart(2, '0')}:00`, px + 2, h - 3);
+    }
+    g.lineWidth = 1.5;
+    marks.forEach((m, i) => {
+      if (m.minute < start) return;
+      const px = x(m.minute), py = 9 + (i % 3) * 7;
+      g.beginPath(); g.arc(px, py, 3.5, 0, Math.PI * 2);
+      if (m.real) { g.fillStyle = css('--laundering'); g.fill(); } else { g.strokeStyle = css('--alarm'); g.stroke(); }
+    });
+  }
+
+  // Live updates from the monitor
+  const events = new EventSource('/events');
+  events.addEventListener('stats', e => { const s = JSON.parse(e.data); showTotals(s); record(s); draw(); });
+  events.addEventListener('alert', e => addAlert(JSON.parse(e.data)));
+  events.onerror = () => {
+    if (stopped || events.readyState === EventSource.CLOSED) {
+      $('status').textContent = 'The monitor has stopped. Start it again from the sbt shell to watch another replay.';
+    }
+  };
+  const pollCases = setInterval(() => { fetch('/cases').then(r => r.json()).then(showCases).catch(() => {}); }, 2000);
+
+  $('stop').addEventListener('click', () => {
+    stopped = true;
+    ['stop', 'pause', 'resetThreshold', 'speed', 'threshold'].forEach(id => { $(id).disabled = true; });
+    $('stop').textContent = 'Stopped';
+    clearInterval(pollCases); events.close();
+    fetch('/stop', { method: 'POST' }).catch(() => {});
+    $('status').textContent = 'The monitor has stopped. Start it again from the sbt shell to watch another replay.';
+  });
+  window.addEventListener('resize', draw);
+</script>
+</body>
+</html>
