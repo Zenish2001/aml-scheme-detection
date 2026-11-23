@@ -1,7 +1,7 @@
 package aml.monitor
 
-import aml.common.{RuleParser, ScoringModel}
-import akka.NotUsed
+import aml.common.{Rule, RuleParser, ScoringModel}
+import akka.{Done, NotUsed}
 import akka.actor.typed.ActorSystem
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.http.scaladsl.Http
@@ -45,18 +45,20 @@ object LiveDashboard {
       model    <- ScoringModel.load(LiveMonitor.TreesFile).left.map(e => s"${LiveMonitor.TreesFile}: $e (run ModelExportMain first)")
       settings <- MonitorSettings.load(LiveMonitor.SettingsFile).left.map(e => s"${LiveMonitor.SettingsFile}: $e (run ReplayExportMain first)")
       reasons  <- RuleParser.parseFile(LiveMonitor.ReasonsFile).left.map(e => s"${LiveMonitor.ReasonsFile}: $e")
-    } yield (Assessor(model, settings, reasons), settings)
+      rules    <- RuleParser.parseFile(LiveMonitor.RulesFile).left.map(e => s"${LiveMonitor.RulesFile}: $e")
+    } yield (Assessor(model, settings, reasons), settings, rules)
 
     loaded match {
-      case Left(error)                 => println(s"\nThe dashboard can't start: $error")
-      case Right((assessor, settings)) => run(replay, math.max(MinRate, math.min(MaxRate, rate)), assessor, settings)
+      case Left(error)                        => println(s"\nThe dashboard can't start: $error")
+      case Right((assessor, settings, rules)) => run(replay, math.max(MinRate, math.min(MaxRate, rate)), assessor, settings, rules)
     }
   }
 
-  private def run(replay: String, rate: Int, assessor: Assessor, settings: MonitorSettings): Unit = {
+  private def run(replay: String, rate: Int, assessor: Assessor, settings: MonitorSettings, rules: Seq[Rule]): Unit = {
     implicit val system: ActorSystem[CaseKeeper.Command] = ActorSystem(CaseKeeper(), "aml-dashboard")
     implicit val timeout: Timeout = 10.seconds
     import system.executionContext
+    val ruleEngine = system.systemActorOf(RuleEngine(rules), "rule-engine")
 
     val controls = new Controls(rate, settings.threshold)
 
@@ -97,6 +99,7 @@ object LiveDashboard {
           .keepAlive(10.seconds, () => ServerSentEvent.heartbeat))
       }),
       path("cases")(get(onSuccess(summary())(s => complete(json(Dashboard.casesJson(s)))))),
+      path("rules")(get(onSuccess(ruleEngine.ask[RuleEngine.Stats](ref => RuleEngine.Report(ref)))(r => complete(json(Dashboard.rulesJson(r)))))),
       path("case")(get(parameters("key".as[Long]) { key =>
         onSuccess(summary()) { s =>
           s.cases.find(_.alerts.exists(_.payment.txnId == key)) match {
@@ -121,7 +124,7 @@ object LiveDashboard {
       }))
 
     Await.result(Http().newServerAt("localhost", Port).bind(route), 10.seconds)
-    println(s"\nThe dashboard is ready: open http://localhost:$Port in your browser, and the replay starts.")
+    println(s"\nThe dashboard is ready: open http://127.0.0.1:$Port in your browser, and the replay starts.")
     println("Stop it with the page's button; it also stops on its own 15 minutes after the replay ends.")
 
     // The replay starts when the page first opens, so no alert is missed
@@ -134,6 +137,10 @@ object LiveDashboard {
         .throttle(MaxRate, 1.second, MaxRate, (_: LivePayment) => math.max(1, MaxRate / math.max(1, controls.rate)), ThrottleMode.Shaping)
         .mapAsync(1)(p => if (!controls.paused) Future.successful(p) else controls.whenRunning.map(_ => p))
         .map(p => assessor.assessAt(p, controls.threshold))
+        // The rule-engine actor checks each batch against the rules, beside the model
+        .groupedWithin(200, 100.millis)
+        .mapAsync(1)(batch => ruleEngine.ask[Done](ref => RuleEngine.CheckBatch(batch, ref)).map(_ => batch))
+        .mapConcat(identity)
         .runWith(Sink.foreach { d =>
           payments.incrementAndGet()
           nanos.addAndGet(d.nanos)

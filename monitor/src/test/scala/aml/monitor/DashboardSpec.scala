@@ -32,9 +32,18 @@ class DashboardSpec extends AnyFlatSpec with Matchers {
       """{"total":2,"cases":[""" +
         """{"key":1,"id":1,"scheme":"FAN-OUT","why":"one account paid 2 others","alerts":2,"real":1,"first":"2022-09-07 00:01"},""" +
         """{"key":3,"id":2,"scheme":"RANDOM","why":"a chain of payments through 2 accounts","alerts":1,"real":1,"first":"2022-09-07 00:03"}]}"""
-    Dashboard.caseJson(summary.cases(1)) shouldBe
+    val one = Dashboard.caseJson(summary.cases(1))
+    one should startWith(
       """{"key":3,"scheme":"RANDOM","why":"a chain of payments through 2 accounts","payments":[""" +
-        """{"txnId":3,"time":"2022-09-07 00:03","sender":"X","receiver":"Y","amountUsd":100.0,"format":"ACH","score":0.99,"real":true}]}"""
+        """{"txnId":3,"time":"2022-09-07 00:03","sender":"X","receiver":"Y","amountUsd":100.0,"format":"ACH","score":0.99,"real":true}],""")
+    one should include(""""sar":{"accounts":2,"banks":2,"payments":1,"totalUsd":100.0,"first":"2022-09-07 00:03",""")
+    one should include(""""formats":[{"format":"ACH","count":1}],"reasons":[],"narrative":"On 2022-09-07 00:03, 2 accounts""")
+  }
+
+  "Dashboard.rulesJson" should "write the rule-engine actor's counts, the model first" in {
+    val r = RuleEngine.Stats(10, 3, 2, 2, Seq(RuleEngine.RuleStat("New payee", 4, 1, 1)))
+    Dashboard.rulesJson(r) shouldBe
+      """{"payments":10,"laundering":3,"modelAlerts":2,"modelReal":2,"rules":[{"name":"New payee","alerts":4,"real":1,"alsoModel":1}]}"""
   }
 
   "Controls" should "pause and resume the stream, and keep the speed and threshold" in {

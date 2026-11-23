@@ -83,6 +83,24 @@ object Dashboard {
         s""""amountUsd":${number(p.features.getOrElse("amountPaidUsd", null))},"format":${quote(p.format)},""" +
         s""""score":${d.score},"real":${p.isLaundering}}"""
     }.mkString("[", ",", "]")
-    s"""{"key":${c.alerts.head.payment.txnId},"scheme":${quote(c.scheme)},"why":${quote(c.why)},"payments":$payments}"""
+    s"""{"key":${c.alerts.head.payment.txnId},"scheme":${quote(c.scheme)},"why":${quote(c.why)},"payments":$payments,""" +
+      s""""sar":${sarJson(Sar.of(c))}}"""
+  }
+
+  /** A case's SAR-style summary. */
+  def sarJson(s: SarSummary): String = {
+    val formats = s.formats.map { case (f, n) => "{\"format\":" + quote(f) + ",\"count\":" + n + "}" }.mkString("[", ",", "]")
+    val reasons = s.reasons.map { case (t, n) => "{\"text\":" + quote(t) + ",\"count\":" + n + "}" }.mkString("[", ",", "]")
+    s"""{"accounts":${s.accounts.size},"banks":${s.banks.size},"payments":${s.payments},"totalUsd":${s.totalUsd},""" +
+      s""""first":${quote(s.first)},"last":${quote(s.last)},"formats":$formats,"reasons":$reasons,""" +
+      s""""narrative":${quote(s.narrative)}}"""
+  }
+
+  /** The rule-engine actor's counts: the model, then each rule. */
+  def rulesJson(r: RuleEngine.Stats): String = {
+    val rules = r.rules.map { st =>
+      "{\"name\":" + quote(st.name) + ",\"alerts\":" + st.alerts + ",\"real\":" + st.real + ",\"alsoModel\":" + st.alsoModel + "}"
+    }.mkString("[", ",", "]")
+    s"""{"payments":${r.payments},"laundering":${r.laundering},"modelAlerts":${r.modelAlerts},"modelReal":${r.modelReal},"rules":$rules}"""
   }
 }

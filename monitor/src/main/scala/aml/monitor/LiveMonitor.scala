@@ -1,6 +1,7 @@
 package aml.monitor
 
-import aml.common.{RuleParser, ScoringModel}
+import aml.common.{Rule, RuleParser, ScoringModel}
+import akka.Done
 import akka.actor.typed.ActorSystem
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.stream.scaladsl.{Sink, Source}
@@ -26,6 +27,7 @@ object LiveMonitor {
   val TreesFile     = "data/models/stage1-trees.txt"
   val SettingsFile  = "data/models/monitor-settings.txt"
   val ReasonsFile   = "rules/reasons.rules"
+  val RulesFile     = "rules/aml.rules"
   val AlertsFile    = "data/live/alerts.jsonl"
   val ShownAlerts   = 8
 
@@ -52,17 +54,20 @@ object LiveMonitor {
       model    <- ScoringModel.load(TreesFile).left.map(e => s"$TreesFile: $e (run ModelExportMain first)")
       settings <- MonitorSettings.load(SettingsFile).left.map(e => s"$SettingsFile: $e (run ReplayExportMain first)")
       reasons  <- RuleParser.parseFile(ReasonsFile).left.map(e => s"$ReasonsFile: $e")
-    } yield (Assessor(model, settings, reasons), settings)
+      rules    <- RuleParser.parseFile(RulesFile).left.map(e => s"$RulesFile: $e")
+    } yield (Assessor(model, settings, reasons), settings, rules)
 
     loaded match {
-      case Left(error)                 => println(s"\nThe monitor can't start: $error")
-      case Right((assessor, settings)) => run(replay, rate, assessor, settings)
+      case Left(error)                        => println(s"\nThe monitor can't start: $error")
+      case Right((assessor, settings, rules)) => run(replay, rate, assessor, settings, rules)
     }
   }
 
-  private def run(replay: String, rate: Int, assessor: Assessor, settings: MonitorSettings): Unit = {
+  private def run(replay: String, rate: Int, assessor: Assessor, settings: MonitorSettings, rules: Seq[Rule]): Unit = {
     implicit val system: ActorSystem[CaseKeeper.Command] = ActorSystem(CaseKeeper(), "aml-monitor")
     implicit val timeout: Timeout     = 30.seconds
+    import system.executionContext
+    val ruleEngine = system.systemActorOf(RuleEngine(rules), "rule-engine")
 
     new File(AlertsFile).getParentFile.mkdirs()
     val alertsOut = new PrintWriter(AlertsFile, "UTF-8")
@@ -79,7 +84,12 @@ object LiveMonitor {
       val payments = Source.fromIterator(() => lines).map(parse)
       val paced    = if (rate > 0) payments.throttle(rate, 1.second) else payments
       val tally = Await.result(
-        paced.map(assessor.assess).runWith(Sink.fold(new Tally) { (t, d) =>
+        paced.map(assessor.assess)
+          // The rule-engine actor checks each batch against the rules; waiting for it keeps the two in step
+          .groupedWithin(1000, 100.millis)
+          .mapAsync(1)(batch => ruleEngine.ask[Done](ref => RuleEngine.CheckBatch(batch, ref)).map(_ => batch))
+          .mapConcat(identity)
+          .runWith(Sink.fold(new Tally) { (t, d) =>
           if (d.isAlert) {
             system ! CaseKeeper.Alerted(d)
             alertsOut.println(AlertJson.of(d))
@@ -90,8 +100,9 @@ object LiveMonitor {
         Duration.Inf)
       val seconds = (System.nanoTime() - started) / 1e9
 
-      val summary = Await.result(system.ask[CaseKeeper.Summary](ref => CaseKeeper.Report(ref)), timeout.duration)
-      report(tally, seconds, summary)
+      val summary   = Await.result(system.ask[CaseKeeper.Summary](ref => CaseKeeper.Report(ref)), timeout.duration)
+      val ruleStats = Await.result(ruleEngine.ask[RuleEngine.Stats](ref => RuleEngine.Report(ref)), timeout.duration)
+      report(tally, seconds, summary, ruleStats)
     } finally {
       input.close()
       alertsOut.close()
@@ -109,7 +120,7 @@ object LiveMonitor {
     d.reasons.foreach { case (text, lift) => println(f"    - $text (lift $lift%.1fx)") }
   }
 
-  private def report(t: Tally, seconds: Double, s: CaseKeeper.Summary): Unit = {
+  private def report(t: Tally, seconds: Double, s: CaseKeeper.Summary, r: RuleEngine.Stats): Unit = {
     val nanos = t.nanos.result().sorted
     def micros(q: Double) = if (nanos.isEmpty) 0.0 else nanos(math.min(nanos.length - 1, (q * nanos.length).toInt)) / 1000.0
     val days = math.max(t.days.size, 1)
@@ -129,6 +140,30 @@ object LiveMonitor {
     s.cases.take(5).foreach { c =>
       val real = c.alerts.count(_.payment.isLaundering)
       println(s"  case ${c.id}: ${c.scheme}, ${c.alerts.size} alerts ($real real laundering): ${c.why}")
+    }
+
+    // The rules, checked live by the rule-engine actor
+    def pct(a: Long, b: Long) = if (b == 0) 0.0 else a * 100.0 / b
+    def short(name: String)   = if (name.length > 46) name.take(45) + "\u2026" else name
+    println(s"\nThe rules in $RulesFile, checked live by the rule-engine actor, beside the model:")
+    println("%-46s %10s %9s %17s".format("", "alerts", "real", "also the model's"))
+    println("%-46s %,10d %8.1f%% %17s".format("The model, at its alert threshold", r.modelAlerts, pct(r.modelReal, r.modelAlerts), "-"))
+    r.rules.foreach { st =>
+      println("%-46s %,10d %8.1f%% %,17d".format(short(st.name), st.alerts, pct(st.real, st.alerts), st.alsoModel))
+    }
+
+    // A SAR-style summary for every case, timed
+    val timed = s.cases.map { c =>
+      val start = System.nanoTime()
+      val text  = Sar.report(Sar.of(c))
+      (text, System.nanoTime() - start)
+    }
+    val sarNanos = timed.map(_._2).sorted
+    if (sarNanos.nonEmpty) {
+      val p95 = sarNanos(math.min(sarNanos.size - 1, (0.95 * sarNanos.size).toInt)) / 1000.0
+      println(f"\nSAR-style summaries for all ${timed.size}%,d cases: 95th percentile $p95%.1f microseconds each (target: under 2 seconds)")
+      println("The largest case's summary:")
+      println(timed.head._1)
     }
     println(s"\nSaved the alerts, one JSON line each, to $AlertsFile")
   }
