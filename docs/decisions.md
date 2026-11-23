@@ -235,3 +235,18 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 **Features:** each transaction's in- and out-degree, and its different neighbours two steps back and forward (Bitcoin transactions can't form loops, so these replace the cycle features).
 **Finding:** illicit transactions have fewer neighbours (0.73 two steps back, against 1.59 for licit ones), but adding the four features changes PR-AUC by +0.4% on the local features and +0.1% on all of Elliptic's own (0.790 to 0.791), and they rank 100th to 150th of 169 inputs. The proposal's 10% target isn't met: Elliptic's aggregated features are already built from each transaction's neighbours, so counting them again adds nothing new.
 **Note:** results move in the third decimal place between runs (0.779 here against 0.782 in Part 6), because the random forest samples rows by position, and the join changes their order.
+
+## 44. Every case gets a SAR-style summary
+
+**Decision:** `Sar` gathers what an analyst needs for a Suspicious Activity Report (accounts and banks, payments and their total in US dollars, dates, payment formats, and reasons with how many alerts each explains) and writes it as one paragraph. The paragraph never uses the replay's labels, which a real analyst wouldn't have. The dashboard shows it at the top of each case, with a button to copy it.
+**Evidence:** summaries for all 89 cases of the test days take 54.9 microseconds each at the 95th percentile, against the proposal's target of under 2 seconds.
+
+## 45. A rule-engine actor checks every payment, with backpressure
+
+**Decision:** `RuleEngine`, an Akka actor, applies `rules/aml.rules` to every payment beside the model, and counts what each rule flags and how much of it was real. The stream sends payments in batches and waits for each to be checked, so the actor can never fall behind and fill memory.
+**Evidence:** over the 4 test days, the actor's counts match the Spark rules exactly (for example 110,768 alerts at 0.9% real for "new payee, receiver sent nothing in 24 hours"), while the model raises 335 alerts at 88.7% real. With the actor, the monitor still replays 137,924 payments a second.
+
+## 46. A dashboard designed for someone new to AML
+
+**Decision:** the page leads with the replay's clock and the payment strip, then the key figures; alerts form one filterable list; the model and the rules are compared as bars; cases show a small drawing of their shape; and the guide opens in its own window on a first visit. Plain colours: blue only for the model and controls, red only for laundering. Headings and case summaries use Charter, a serif built into macOS, so the summaries read like reports.
+**Note:** halfway through a replay, the rules look better than they end up, because their false alarms cluster on Sep 9 and 10.
