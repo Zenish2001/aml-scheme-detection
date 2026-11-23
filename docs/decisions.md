@@ -223,3 +223,15 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 **Decision:** `LiveDashboard` serves a web page with Akka HTTP. Alerts reach it as they happen (server-sent events), with running totals four times a second, and it asks the `CaseKeeper` actor for cases. The page is written for someone new to AML: a plain explanation, a guide to reading it, drawings of the 8 shapes, explanations on hover, alerts that open to show why they were flagged and the facts behind them, and cases that open to show their money drawn as a network.
 **Controls:** pause, speed, and the alert threshold, which can move while the replay runs. A "with this threshold" line shows its alerts a day and how many are real, so the trade-off every bank faces is visible at once.
 **Also:** the page is sent with `Cache-Control: no-store`, so a browser never shows an old copy of it after an update.
+
+## 42. The model saves analyst hours against every rule
+
+**Measure:** for each rule, the hours its alerts would take at 20 minutes each, against the hours for the model's highest-scored alerts needed to find the same laundering, on the test days.
+**Evidence:** the model saves 88.5%, 67.8%, 93.1%, 92.2% and 96.3% of the hours against the five rules, and 63.7% against all five together. The proposal's target was 30%. For example, the model finds the 252 laundering payments the loop-or-go-between rule finds in its top 281 alerts (94 hours), against the rule's 4,071 (1,357 hours).
+**Also:** this turns the "2× as many cases at the same alert volume" criterion, met for 3 of 5 rules, into something every rule meets: the same laundering with 64-96% fewer alerts.
+
+## 43. Our own graph features add nothing on Elliptic
+
+**Features:** each transaction's in- and out-degree, and its different neighbours two steps back and forward (Bitcoin transactions can't form loops, so these replace the cycle features).
+**Finding:** illicit transactions have fewer neighbours (0.73 two steps back, against 1.59 for licit ones), but adding the four features changes PR-AUC by +0.4% on the local features and +0.1% on all of Elliptic's own (0.790 to 0.791), and they rank 100th to 150th of 169 inputs. The proposal's 10% target isn't met: Elliptic's aggregated features are already built from each transaction's neighbours, so counting them again adds nothing new.
+**Note:** results move in the third decimal place between runs (0.779 here against 0.782 in Part 6), because the random forest samples rows by position, and the join changes their order.

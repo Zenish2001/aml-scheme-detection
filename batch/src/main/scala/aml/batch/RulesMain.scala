@@ -50,12 +50,24 @@ object RulesMain {
         println("%-46s %10s %9s %12s %12s".format("rule", "alerts/day", "recall", "precision", "model recall"))
         val named = rules.map(rule => (rule.name, RuleColumns.toColumn(rule.condition))) :+
           ("Any of the rules above" -> rules.map(rule => RuleColumns.toColumn(rule.condition)).reduce(_ || _))
-        named.foreach { case (name, column) =>
-          val r = Stage1.ofRule(test, column)
+        val results = named.map { case (name, column) => name -> Stage1.ofRule(test, column) }
+        results.foreach { case (name, r) =>
           val m = Stage1.topN(scored, r.alerts)
           println("%-46s %,10d %8.1f%% %11.2f%% %11.1f%%".format(
             shorten(name), r.alerts / days, r.recall * 100, r.precision * 100, m.recall * 100))
         }
+
+        // Analyst time: how many alerts the model needs to find as much laundering as each rule
+        println(s"\nAnalyst hours over the $days test days to find as much laundering as each rule, at ${AnalystHours.MinutesPerAlert} minutes an alert:")
+        println("%-46s %9s %11s %10s %11s %9s".format("rule", "found", "rule hours", "model", "model hours", "saved"))
+        results.foreach { case (name, r) =>
+          val modelAlerts = AnalystHours.alertsToCatch(scored, r.caught)
+          val ruleHours   = AnalystHours.hours(r.alerts)
+          val modelHours  = AnalystHours.hours(modelAlerts)
+          val saved       = if (ruleHours == 0) 0.0 else (1 - modelHours / ruleHours) * 100
+          println("%-46s %,9d %,11.0f %,10d %,11.0f %8.1f%%".format(shorten(name), r.caught, ruleHours, modelAlerts, modelHours, saved))
+        }
+        println("(model: the model's highest-scored payments needed to find as many laundering payments as the rule)")
       }
     } finally spark.stop()
   }
