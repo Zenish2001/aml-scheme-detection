@@ -250,3 +250,9 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 
 **Decision:** the page leads with the replay's clock and the payment strip, then the key figures; alerts form one filterable list; the model and the rules are compared as bars; cases show a small drawing of their shape; and the guide opens in its own window on a first visit. Plain colours: blue only for the model and controls, red only for laundering. Headings and case summaries use Charter, a serif built into macOS, so the summaries read like reports.
 **Note:** halfway through a replay, the rules look better than they end up, because their false alarms cluster on Sep 9 and 10.
+
+## 47. The features are computed live too, identical to Spark
+
+**Decision:** `FeatureEngine` (in `common`) computes all 34 features in plain Scala, one hour of payments at a time, in time order: each payment sees only earlier hours (or earlier minutes, for the minutes since money arrived), and history older than a week is forgotten as time moves on. Hubs come from a first pass over the payments, as in batch.
+**Evidence:** fed every payment from Sep 1 to Sep 7 (3,731,672), its features for all 482,751 payments of Sep 7 match Spark's in every one of 16,896,285 values, at about 100,000 payments a second.
+**Why it matters:** this lifts the limit of decision 40. The monitor no longer needs features computed in batch, so it can score payments it has never seen, such as an uploaded file.
