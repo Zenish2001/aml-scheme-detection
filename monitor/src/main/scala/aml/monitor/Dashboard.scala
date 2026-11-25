@@ -10,7 +10,8 @@ import scala.concurrent.{Future, Promise}
 final case class Snapshot(
   payments: Long, alerts: Long, caught: Long, laundering: Long, minute: Long, time: String,
   averageMicros: Double, speed: Long, finished: Boolean, source: String, rate: Int, paused: Boolean,
-  threshold: Double, defaultThreshold: Double, sinceAlerts: Long, sinceCaught: Long, sinceMinutes: Long)
+  threshold: Double, defaultThreshold: Double, sinceAlerts: Long, sinceCaught: Long, sinceMinutes: Long,
+  labelled: Boolean = true)
 
 /** The dashboard's controls, shared between the web server and the stream: pace, pause and the alert threshold. */
 final class Controls(initialRate: Int, val defaultThreshold: Double) {
@@ -54,7 +55,7 @@ object Dashboard {
       s""""minute":${s.minute},"time":${quote(s.time)},"averageMicros":$micros,"speed":${s.speed},""" +
       s""""finished":${s.finished},"source":${quote(s.source)},"rate":${s.rate},"paused":${s.paused},""" +
       s""""threshold":${s.threshold},"defaultThreshold":${s.defaultThreshold},""" +
-      s""""sinceAlerts":${s.sinceAlerts},"sinceCaught":${s.sinceCaught},"sinceMinutes":${s.sinceMinutes}}"""
+      s""""sinceAlerts":${s.sinceAlerts},"sinceCaught":${s.sinceCaught},"sinceMinutes":${s.sinceMinutes},"labelled":${s.labelled}}"""
   }
 
   /** An alert, with its reasons and the facts behind them. */
@@ -94,6 +95,13 @@ object Dashboard {
     s"""{"accounts":${s.accounts.size},"banks":${s.banks.size},"payments":${s.payments},"totalUsd":${s.totalUsd},""" +
       s""""first":${quote(s.first)},"last":${quote(s.last)},"formats":$formats,"reasons":$reasons,""" +
       s""""narrative":${quote(s.narrative)}}"""
+  }
+
+  /** What an uploaded file holds, once checked. */
+  def uploadJson(name: String, parsed: aml.common.IbmCsv.Parsed, hubs: Int): String = {
+    val problems = parsed.problems.map(quote).mkString("[", ",", "]")
+    s"""{"name":${quote(name)},"payments":${parsed.rows.size},"skipped":${parsed.skipped},"labelled":${parsed.labelled},""" +
+      s""""hubs":$hubs,"first":${quote(parsed.first)},"last":${quote(parsed.last)},"problems":$problems}"""
   }
 
   /** The rule-engine actor's counts: the model, then each rule. */

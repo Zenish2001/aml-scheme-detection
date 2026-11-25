@@ -256,3 +256,14 @@ Each decision, why it was made, and the evidence behind it. Newest last.
 **Decision:** `FeatureEngine` (in `common`) computes all 34 features in plain Scala, one hour of payments at a time, in time order: each payment sees only earlier hours (or earlier minutes, for the minutes since money arrived), and history older than a week is forgotten as time moves on. Hubs come from a first pass over the payments, as in batch.
 **Evidence:** fed every payment from Sep 1 to Sep 7 (3,731,672), its features for all 482,751 payments of Sep 7 match Spark's in every one of 16,896,285 values, at about 100,000 payments a second.
 **Why it matters:** this lifts the limit of decision 40. The monitor no longer needs features computed in batch, so it can score payments it has never seen, such as an uploaded file.
+
+## 48. Check your own file, with every feature computed live
+
+**Decision:** the dashboard accepts any file of payments in IBM's format. `IbmCsv` checks every line (columns, times, amounts, currencies; the laundering flag is optional) and reports bad lines by number. The file is saved to disk as it arrives and read once, away from the web server's threads, then streamed through the `FeatureEngine`, the model and the rule-engine actor, with no Spark. The engine hands back each payment's features as soon as they're computed, which still matches Spark exactly (0 differences in 16,896,285 values, at 106,917 payments a second).
+**Evidence:** on Sep 3-4 of LI-Small, a dataset the model never saw, 565,802 payments gave 15 alerts, 14 of them real laundering (93.3%), at 7.8 microseconds a decision, while the rules raised up to 271,872 alerts at 0.2-3.0% real. It caught only 2.4% of the laundering: the threshold was set on HI-Small, and LI-Small's laundering is harder to find (decision 37).
+**Note:** the check compares 35 values a payment: the model's 34 features, plus `hourOfDay`, which is computed but not used (decision 34).
+
+## 49. The live monitor's limit: one hour of up to 150,000 payments
+
+**Finding:** the first hour of IBM's files is a burst from the simulator starting up (most of LI-Small's first million lines). Every account's recent history has to be held in memory, so that one hour is more than the live monitor can hold, and it froze.
+**Decision:** files whose busiest hour holds more than 150,000 payments are refused at once, with the reason and a suggestion. Ordinary hours hold far fewer (about 60,000 in HI-Small's busiest test-day hours, 35,000 in LI-Small's Sep 3), so real traffic is unaffected. The monitor runs in its own JVM with 6 GB, and whichever was asked for last, an upload or the test days, wins.

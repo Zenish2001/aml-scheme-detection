@@ -138,6 +138,10 @@
   .shape-row .why { font-size: 13px; color: var(--muted); }
 
   footer { color: var(--muted); font-size: 13px; padding: 10px 0 40px; max-width: 90ch; }
+  .example { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; margin: 0; padding: 10px 12px;
+    background: var(--page); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; white-space: pre; }
+  .upload-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .upload-error { color: var(--laundering); }
 
   /* Windows */
   dialog { width: min(860px, 94vw); max-height: 90vh; border: 1px solid var(--rule); border-radius: 12px; padding: 0; color: var(--ink); background: var(--paper); }
@@ -178,6 +182,7 @@
   </div>
   <div class="actions">
     <span class="status" id="status"><span class="dot"></span><span id="statusText">Connecting to the monitor…</span></span>
+    <button id="openUpload" type="button">Check your own file</button>
     <button id="openGuide" type="button">How to read this page</button>
     <button id="stop" type="button">Stop the monitor</button>
   </div>
@@ -268,6 +273,22 @@
   <div class="dialog-body" id="detailBody"></div>
 </dialog>
 
+<dialog id="upload" aria-labelledby="uploadTitle">
+  <div class="dialog-head"><h2 id="uploadTitle">Check your own file</h2><button id="closeUpload" type="button">Close</button></div>
+  <div class="dialog-body">
+    <p>Choose a file of payments, and the monitor checks every one of them, live, exactly as it checks the replay: scores, reasons, cases and summaries, with each payment’s features worked out as it arrives. The file stays on this computer.</p>
+    <p class="muted small">It must be a CSV file in IBM’s format: the time, the sending bank and account, the receiving bank and account, the amount received and its currency, the amount paid and its currency, the payment format, and the laundering flag. The flag is optional; without it, the page can’t say which alerts were real. Up to 1.5 million payments.</p>
+    <pre class="example">Timestamp,From Bank,Account,To Bank,Account,Amount Received,Receiving Currency,Amount Paid,Payment Currency,Payment Format,Is Laundering
+2022/09/01 00:20,010,8000EBD30,010,8000EBD30,3195403.00,US Dollar,3195403.00,US Dollar,Reinvestment,0</pre>
+    <div class="upload-row">
+      <input type="file" id="file" accept=".csv,text/csv">
+      <button id="sendFile" class="primary" type="button" disabled>Check this file</button>
+    </div>
+    <p id="uploadStatus" class="muted" role="status"></p>
+    <p><button id="backToReplay" type="button">Go back to the test days’ replay</button></p>
+  </div>
+</dialog>
+
 <dialog id="guide" class="guide" aria-labelledby="guideTitle">
   <div class="dialog-head"><h2 id="guideTitle">How to read this page</h2><button id="closeGuide" class="primary" type="button">Start watching</button></div>
   <div class="dialog-body">
@@ -278,6 +299,7 @@
       <li><strong>Cases</strong> group alerts that share accounts. Click one for a suspicious activity summary, ready for a report, and a drawing of where the money went.</li>
       <li><strong>The model against the rules</strong> compares the model with the fixed rules banks have traditionally used, live.</li>
       <li><strong>The threshold</strong> is the trade-off every bank faces: lower it to catch more laundering, at the cost of more false alarms.</li>
+      <li><strong>Check your own file</strong> runs the monitor on any file of payments in IBM’s format, with every feature worked out live.</li>
     </ul>
     <h3>The 8 shapes laundering takes</h3>
     <div class="schemes" id="schemes"></div>
@@ -492,8 +514,8 @@
       rows.forEach(([k, label, show]) => { const tr = el('tr'); tr.append(el('td', null, label), el('td', null, show(a.facts[k]))); body.append(tr); });
       table.append(body); parts.push(table);
     }
-    parts.push(el('p', a.isLaundering ? 'truth real' : 'truth alarm',
-      a.isLaundering ? `In IBM’s labels, this really was laundering: ${schemeName(a.scheme)}.` : 'In IBM’s labels, this was a normal payment: a false alarm.'));
+    if (labelled) parts.push(el('p', a.isLaundering ? 'truth real' : 'truth alarm',
+      a.isLaundering ? `In the labels, this really was laundering${a.scheme ? ': ' + schemeName(a.scheme) : ''}.` : 'In the labels, this was a normal payment: a false alarm.'));
     const see = el('button', null, 'See its case');
     see.type = 'button';
     see.addEventListener('click', () => openCase(a.txnId));
@@ -533,13 +555,13 @@
         drawNetwork(c.payments)
       ];
       const table = el('table'), head = el('thead'), hr = el('tr');
-      ['Time', 'From', 'To', 'Amount', 'Score', 'In IBM’s labels'].forEach((h, i) => hr.append(el('th', i >= 3 && i <= 4 ? 'num' : null, h)));
+      ['Time', 'From', 'To', 'Amount', 'Score', 'In the labels'].forEach((h, i) => hr.append(el('th', i >= 3 && i <= 4 ? 'num' : null, h)));
       head.append(hr);
       const body = el('tbody');
       c.payments.forEach(p => {
         const tr = el('tr');
         tr.append(el('td', null, p.time), el('td', null, p.sender), el('td', null, p.receiver),
-          el('td', 'num', dollars.format(p.amountUsd)), el('td', 'num', p.score.toFixed(3)), el('td', p.real ? 'truth real' : 'truth alarm', p.real ? 'Laundering' : 'False alarm'));
+          el('td', 'num', dollars.format(p.amountUsd)), el('td', 'num', p.score.toFixed(3)), labelled ? el('td', p.real ? 'truth real' : 'truth alarm', p.real ? 'Laundering' : 'False alarm') : el('td', 'muted', 'No labels'));
         body.append(tr);
       });
       table.append(head, body);
@@ -550,10 +572,10 @@
 
   // The alerts list, with a filter
   const alerts = [], marks = [];
-  let filter = 'all';
+  let filter = 'all', labelled = true;
   const shows = a => filter === 'all' || (filter === 'real') === a.isLaundering;
   function alertRow(a) {
-    const li = el('li'), b = el('button', 'row-button' + (a.isLaundering ? '' : ' alarm'));
+    const li = el('li'), b = el('button', 'row-button' + (a.isLaundering || !labelled ? '' : ' alarm'));
     b.type = 'button';
     const top = el('div', 'alert-top');
     const score = el('span', 'score'); score.append('score ', el('b', null, a.score.toFixed(3)));
@@ -563,7 +585,9 @@
     a.reasons.slice(0, 2).forEach(r => chips.append(el('span', 'chip', r.text)));
     if (a.reasons.length > 2) chips.append(el('span', 'chip more', `${a.reasons.length - 2} more`));
     if (!a.reasons.length) chips.append(el('span', 'chip more', 'No reason matched'));
-    b.append(chips, el('div', 'truth ' + (a.isLaundering ? 'real' : 'alarm'), a.isLaundering ? `Real laundering: ${schemeName(a.scheme)}` : 'A false alarm'));
+    b.append(chips, labelled
+      ? el('div', 'truth ' + (a.isLaundering ? 'real' : 'alarm'), a.isLaundering ? `Real laundering${a.scheme ? ': ' + schemeName(a.scheme) : ''}` : 'A false alarm')
+      : el('div', 'truth alarm', 'Not labelled in this file'));
     b.addEventListener('click', () => openAlert(a));
     li.append(b);
     return li;
@@ -614,15 +638,20 @@
   function showRules(r) {
     const box = $('bars');
     const note = box.querySelector('p');
+    note.textContent = labelled
+      ? 'How many of each one’s alerts were real laundering. A rule-engine actor checks every payment against the hand-written rules banks have traditionally used, beside the model.'
+      : 'How many alerts each one raises. This file has no laundering labels, so the page can’t say how many were real.';
     const rows = [{ name: 'The model', alerts: r.modelAlerts, real: r.modelReal, model: true }]
       .concat(r.rules.map(x => ({ name: x.name, alerts: x.alerts, real: x.real })));
+    const most = Math.max(1, ...rows.map(x => x.alerts));
     box.replaceChildren(note, ...rows.map(x => {
       const row = el('div', 'bar-row' + (x.model ? ' model' : ''));
       const label = el('div', 'bar-label'), num = el('span', 'num');
-      num.append(el('b', null, pct(x.real, x.alerts)), ` of ${number.format(x.alerts)}`);
+      if (labelled) num.append(el('b', null, pct(x.real, x.alerts)), ` of ${number.format(x.alerts)}`);
+      else num.append(el('b', null, number.format(x.alerts)), ' alerts');
       label.append(el('span', 'name', x.name), num);
       const track = el('div', 'track'), fill = el('div', 'fill');
-      fill.style.width = x.alerts ? `${Math.max(1, 100 * x.real / x.alerts)}%` : '0';
+      fill.style.width = !x.alerts ? '0' : labelled ? `${Math.max(1, 100 * x.real / x.alerts)}%` : `${Math.max(1, 100 * x.alerts / most)}%`;
       track.append(fill);
       row.append(label, track);
       return row;
@@ -637,6 +666,12 @@
   }
   function showTotals(s) {
     threshold = s.threshold; defaultThreshold = s.defaultThreshold; paused = s.paused;
+    if (labelled !== s.labelled) {
+      labelled = s.labelled;
+      document.querySelectorAll('.segmented button').forEach(b => { b.disabled = !labelled && b.dataset.filter !== 'all'; });
+      if (!labelled && filter !== 'all') { filter = 'all'; document.querySelectorAll('.segmented button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.filter === 'all'))); }
+      renderAlerts();
+    }
     if (!controlsReady) { $('speed').value = s.rate; $('threshold').value = s.threshold; controlsReady = true; }
     if (s.minute && !firstMinute) firstMinute = s.minute;
     $('speedLabel').textContent = number.format(Number($('speed').value));
@@ -645,19 +680,22 @@
     $('payments').textContent = number.format(s.payments);
     $('alertCount').textContent = number.format(s.alerts);
     const days = firstMinute && s.minute > firstMinute ? (s.minute - firstMinute) / 1440 : 0;
-    $('alertsPerDay').textContent = days >= 0.25 ? `Alerts, about ${number.format(Math.round(s.alerts / days))} a day` : 'Alerts';
-    $('precision').textContent = pct(s.caught, s.alerts);
-    $('recall').textContent = pct(s.caught, s.laundering);
+    const aDay = days >= 0.25 ? s.alerts / days : null;
+    $('alertsPerDay').textContent = aDay === null ? 'Alerts' : aDay < 1 ? 'Alerts, fewer than 1 a day' : `Alerts, about ${number.format(Math.round(aDay))} a day`;
+    $('precision').textContent = labelled ? pct(s.caught, s.alerts) : 'No labels';
+    $('recall').textContent = labelled ? pct(s.caught, s.laundering) : 'No labels';
     $('micros').textContent = s.payments ? `${s.averageMicros.toFixed(1)} µs` : '–';
-    $('since').textContent = s.sinceMinutes >= 60
-      ? `At this threshold: about ${number.format(Math.round(s.sinceAlerts / (s.sinceMinutes / 1440)))} alerts a day, ${pct(s.sinceCaught, s.sinceAlerts, 0)} real`
-      : 'Higher means fewer alerts, more of them real. Measuring what this one gives…';
+    const perDay = s.sinceMinutes >= 60 ? number.format(Math.round(s.sinceAlerts / (s.sinceMinutes / 1440))) : null;
+    $('since').textContent = !perDay ? 'Higher means fewer alerts, more of them real. Measuring what this one gives…'
+      : s.sinceAlerts === 0 ? 'At this threshold: no alerts so far'
+      : labelled ? `At this threshold: about ${perDay} alerts a day, ${pct(s.sinceCaught, s.sinceAlerts, 0)} real`
+      : `At this threshold: about ${perDay} alerts a day`;
     if (s.time) $('clock').textContent = clockText(s.time);
     if (stopped) return;
-    if (s.finished) setStatus(`Finished: all ${number.format(s.payments)} payments replayed`, false);
+    if (s.finished) setStatus(`Finished: all ${number.format(s.payments)} payments of ${sourceName(s.source)} checked`, false);
     else if (s.paused) setStatus('Paused', false);
-    else if (s.payments) setStatus(`Replaying ${sourceName(s.source)}, ${number.format(s.speed)} payments a second`, true);
-    else setStatus('Starting the replay…', false);
+    else if (s.payments) setStatus(`Checking ${sourceName(s.source)}, ${number.format(s.speed)} payments a second`, true);
+    else setStatus('Starting…', false);
   }
   function control(params) {
     return fetch('/control?' + new URLSearchParams(params), { method: 'POST' }).then(r => r.json()).then(showTotals).catch(() => {});
@@ -718,6 +756,52 @@
   const events = new EventSource('/events');
   events.addEventListener('stats', e => { const s = JSON.parse(e.data); showTotals(s); record(s); draw(); });
   events.addEventListener('alert', e => addAlert(JSON.parse(e.data)));
+  events.addEventListener('reset', e => {
+    const r = JSON.parse(e.data);
+    alerts.length = 0; marks.length = 0; hours.clear();
+    lastPayments = 0; nowMinute = 0; firstMinute = 0;
+    $('noAlerts').textContent = 'No alerts yet. A payment appears here the moment its score reaches the alert threshold; click it to see why it was flagged.';
+    renderAlerts();
+    $('cases').replaceChildren(); $('cases').hidden = true; $('noCases').hidden = false; $('casesTotal').textContent = 'None yet';
+    $('clock').textContent = 'Waiting for the first payment';
+    $('clockNote').textContent = `The time inside ${sourceName(r.source)}.`;
+    draw();
+  });
+
+  // Checking a file of your own
+  $('openUpload').addEventListener('click', () => $('upload').showModal());
+  $('closeUpload').addEventListener('click', () => $('upload').close());
+  $('file').addEventListener('change', () => {
+    $('sendFile').disabled = !$('file').files.length;
+    $('uploadStatus').className = 'muted'; $('uploadStatus').textContent = '';
+  });
+  $('sendFile').addEventListener('click', () => {
+    const file = $('file').files[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file);
+    $('sendFile').disabled = true;
+    $('uploadStatus').className = 'muted';
+    $('uploadStatus').textContent = `Reading and checking ${file.name}… A million payments takes a few seconds.`;
+    fetch('/upload', { method: 'POST', body: form })
+      .then(r => r.text().then(t => {
+        let j;
+        try { j = JSON.parse(t); } catch (e) { j = { error: r.status === 413 ? 'The file is too big: the monitor takes files up to 250 MB.' : (t || 'The file couldn’t be checked.') }; }
+        if (!r.ok) throw new Error(j.error);
+        return j;
+      }))
+      .then(j => {
+        const skipped = j.skipped ? ` ${number.format(j.skipped)} lines couldn’t be read and were skipped, for example ${j.problems.join('; ')}.` : '';
+        const labels = j.labelled ? '' : ' It has no laundering labels, so the page won’t say which alerts were real.';
+        $('uploadStatus').textContent = `Checking ${number.format(j.payments)} payments, from ${j.first} to ${j.last}.${skipped}${labels}`;
+        setTimeout(() => $('upload').close(), skipped || labels ? 5000 : 1200);
+      })
+      .catch(e => { $('uploadStatus').className = 'upload-error'; $('uploadStatus').textContent = e.message; })
+      .finally(() => { $('sendFile').disabled = !$('file').files.length; });
+  });
+  $('backToReplay').addEventListener('click', () => {
+    fetch('/replay', { method: 'POST' }).then(() => $('upload').close()).catch(() => {});
+  });
   events.onerror = () => {
     if (stopped || events.readyState === EventSource.CLOSED) setStatus('The monitor has stopped. Start it again from the sbt shell.', false);
   };

@@ -13,6 +13,8 @@ object CaseKeeper {
   sealed trait Command
   final case class Alerted(decision: Decision) extends Command
   final case class Report(replyTo: ActorRef[Summary]) extends Command
+  /** Forgets every alert, when the dashboard starts checking a new file. */
+  case object Reset extends Command
 
   /** One case: its alerts, and the scheme its shape looks like, with the reason. */
   final case class LiveCase(id: Int, scheme: String, why: String, alerts: Seq[Decision])
@@ -28,6 +30,8 @@ object CaseKeeper {
     case Report(replyTo) =>
       replyTo ! summarize(alerts, window)
       Behaviors.same
+    case Reset =>
+      keeping(Vector.empty, window)
   }
 
   /** The alerts grouped into cases, largest first. */

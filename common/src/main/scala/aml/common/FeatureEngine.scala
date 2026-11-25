@@ -40,9 +40,12 @@ final class FeatureEngine(usdPer: Map[String, Double], hubs: Set[String]) {
   def usdOf(amount: Double, currency: String): Double =
     amount * usdPer.getOrElse(currency, throw new IllegalArgumentException(s"no US-dollar rate for $currency"))
 
-  /** The features of one hour's payments, all in the same hour and in minute order; then it remembers them. */
-  def hour(payments: Seq[RawPayment]): Seq[(RawPayment, Map[String, Double])] = {
-    if (payments.isEmpty) return Nil
+  /** The features of one hour's payments, all in the same hour and in minute order, one payment at a time, as
+    * they're asked for; once the last one has been handed back, it remembers the hour. Handing them back one by one
+    * keeps memory small even for a huge hour, such as the burst that starts IBM's files.
+    */
+  def hour(payments: Seq[RawPayment]): Iterator[(RawPayment, Map[String, Double])] = {
+    if (payments.isEmpty) return Iterator.empty
     val h = payments.head.hour
     require(payments.forall(_.hour == h), "payments of one call must share an hour")
     sweep(h)
@@ -50,14 +53,16 @@ final class FeatureEngine(usdPer: Map[String, Double], hubs: Set[String]) {
     val windows = mutable.HashMap.empty[String, Window24]   // each account's 24 hours, once per hour
     def window(account: String) = windows.getOrElseUpdate(account, last24(account, h))
 
-    // Minutes since received: earlier minutes count, even within this hour
-    val minutesSince = mutable.HashMap.empty[Long, Double]
-    payments.groupBy(_.minute).toSeq.sortBy(_._1).foreach { case (m, group) =>
-      group.foreach(p => minutesSince(p.id) = lastReceived.get(p.sender).map(r => math.min(m - r, MaxMinutes).toDouble).getOrElse(MaxMinutes.toDouble))
-      group.foreach(p => lastReceived(p.receiver) = m)
-    }
+    // Minutes since received: earlier minutes count, even within this hour, so receipts are noted minute by minute
+    var minuteNow = Long.MinValue
+    val receivedThisMinute = mutable.ArrayBuffer.empty[String]
+    def noteReceipts(): Unit = { receivedThisMinute.foreach(r => lastReceived(r) = minuteNow); receivedThisMinute.clear() }
 
-    val results = payments.map { p =>
+    def features(p: RawPayment): (RawPayment, Map[String, Double]) = {
+      if (p.minute != minuteNow) { noteReceipts(); minuteNow = p.minute }
+      val minutesSince = lastReceived.get(p.sender).map(r => math.min(p.minute - r, MaxMinutes).toDouble).getOrElse(MaxMinutes.toDouble)
+      receivedThisMinute += p.receiver
+
       val s = window(p.sender)
       val r = window(p.receiver)
       val paidUsd = usdOf(p.amountPaid, p.payCcy)
@@ -70,7 +75,7 @@ final class FeatureEngine(usdPer: Map[String, Double], hubs: Set[String]) {
       f("hourOfDay")       = Math.floorMod(h, 24L).toDouble
       f("isJustUnder10k")  = flag(paidUsd >= 9000 && paidUsd < 10000)
       f("pairPayments7d")  = countIn(pairs.get((p.sender, p.receiver)), h - WeekHours, h - 1).toDouble
-      f("senderMinutesSinceReceived") = minutesSince(p.id)
+      f("senderMinutesSinceReceived") = minutesSince
       f("senderPassThrough24h")     = if (s.recvUsd > 0) (s.sentUsd + paidUsd) / s.recvUsd else NoHistory
       f("amountVsSenderAverage24h") = if (s.sentUsd > 0) paidUsd / (s.sentUsd / s.sentCount) else NoHistory
       f("reciprocal7d")         = if (p.sender == p.receiver) 0.0 else countIn(pairs.get((p.receiver, p.sender)), h - WeekHours, h - 1).toDouble
@@ -82,8 +87,17 @@ final class FeatureEngine(usdPer: Map[String, Double], hubs: Set[String]) {
       p -> f.toMap
     }
 
-    payments.foreach(remember(_, h))
-    results
+    // Nothing of this hour is remembered until every payment in it has its features, so none sees its own hour
+    val each = payments.iterator.map(features)
+    var done = false
+    new Iterator[(RawPayment, Map[String, Double])] {
+      def hasNext: Boolean = {
+        val more = each.hasNext
+        if (!more && !done) { done = true; noteReceipts(); payments.foreach(remember(_, h)) }
+        more
+      }
+      def next(): (RawPayment, Map[String, Double]) = each.next()
+    }
   }
 
   private def flag(b: Boolean): Double = if (b) 1.0 else 0.0
@@ -143,11 +157,14 @@ final class FeatureEngine(usdPer: Map[String, Double], hubs: Set[String]) {
 
   /** An account's activity in the 24 whole hours before hour h. */
   private def last24(account: String, h: Long): Window24 = {
-    val w = new Window24
-    activity.get(account).foreach(_.foreach { a =>
-      if (a.hour >= h - DayHours && a.hour <= h - 1) w.add(a)
-    })
-    w
+    val inWindow = (a: AccountHour) => a.hour >= h - DayHours && a.hour <= h - 1
+    activity.get(account) match {
+      case Some(hours) if hours.exists(inWindow) =>
+        val w = new Window24
+        hours.foreach(a => if (inWindow(a)) w.add(a))
+        w
+      case _ => NoActivity   // most accounts, in a busy first hour: one shared, empty window, only ever read
+    }
   }
 
   /** Adds one payment to the history, as part of hour h. */
@@ -238,6 +255,9 @@ object FeatureEngine {
       f(role + "Formats24h") = formats.size.toDouble
     }
   }
+
+  /** The window of an account with no activity in the 24 hours: shared by all of them, and never added to. */
+  private val NoActivity = new Window24
 
   /** Accounts with more than HubDegree different counterparties, sending or receiving, anywhere in the payments. */
   def hubs(payments: Iterator[RawPayment]): Set[String] = {

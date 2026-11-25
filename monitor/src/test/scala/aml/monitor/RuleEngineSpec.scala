@@ -32,4 +32,20 @@ class RuleEngineSpec extends ScalaTestWithActorTestKit with AnyFlatSpecLike {
       RuleEngine.RuleStat("Over $5,000", alerts = 2, real = 2, alsoModel = 1),
       RuleEngine.RuleStat("Paid by ACH", alerts = 2, real = 1, alsoModel = 1))))
   }
+
+  it should "start again for a new run, ignoring batches still arriving from the old one" in {
+    val engine = spawn(RuleEngine(rules))
+    val done   = createTestProbe[Done]()
+    val stats  = createTestProbe[RuleEngine.Stats]()
+
+    engine ! RuleEngine.CheckBatch(Seq(decision(7000, "ACH", real = true, modelAlert = true)), done.ref)
+    engine ! RuleEngine.Reset(run = 1)
+    engine ! RuleEngine.CheckBatch(Seq(decision(9000, "ACH", real = true, modelAlert = true)), done.ref)           // the old run's
+    engine ! RuleEngine.CheckBatch(Seq(decision(100, "Cheque", real = false, modelAlert = false)), done.ref, run = 1)
+    done.receiveMessages(3)
+    engine ! RuleEngine.Report(stats.ref)
+
+    val s = stats.receiveMessage()
+    (s.payments, s.laundering, s.modelAlerts) shouldBe ((1, 0, 0))
+  }
 }
