@@ -13,8 +13,10 @@ import akka.actor.typed.scaladsl.Behaviors
 object RuleEngine {
 
   sealed trait Command
-  final case class CheckBatch(decisions: Seq[Decision], replyTo: ActorRef[Done]) extends Command
+  final case class CheckBatch(decisions: Seq[Decision], replyTo: ActorRef[Done], run: Long = 0) extends Command
   final case class Report(replyTo: ActorRef[Stats]) extends Command
+  /** Starts the counts again for a new run (a new file); batches still arriving from older runs are ignored. */
+  final case class Reset(run: Long) extends Command
 
   final case class RuleStat(name: String, alerts: Long, real: Long, alsoModel: Long)
   final case class Stats(payments: Long, laundering: Long, modelAlerts: Long, modelReal: Long, rules: Seq[RuleStat])
@@ -33,15 +35,17 @@ object RuleEngine {
       })
   }
 
-  def apply(rules: Seq[Rule]): Behavior[Command] = running(rules, empty(rules))
+  def apply(rules: Seq[Rule]): Behavior[Command] = running(rules, empty(rules), 0)
 
-  private def running(rules: Seq[Rule], s: Stats): Behavior[Command] = Behaviors.receiveMessage {
-    case CheckBatch(decisions, replyTo) =>
-      val next = decisions.foldLeft(s)((acc, d) => check(rules, acc, d))
+  private def running(rules: Seq[Rule], s: Stats, run: Long): Behavior[Command] = Behaviors.receiveMessage {
+    case CheckBatch(decisions, replyTo, batchRun) =>
       replyTo ! Done
-      running(rules, next)
+      if (batchRun == run) running(rules, decisions.foldLeft(s)((acc, d) => check(rules, acc, d)), run)
+      else Behaviors.same
     case Report(replyTo) =>
       replyTo ! s
       Behaviors.same
+    case Reset(newRun) =>
+      running(rules, empty(rules), newRun)
   }
 }

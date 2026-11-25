@@ -15,7 +15,13 @@ class DashboardSpec extends AnyFlatSpec with Matchers {
     Dashboard.statsJson(s) shouldBe
       """{"payments":1000,"alerts":5,"caught":4,"laundering":9,"minute":27703291,"time":"2022-09-07 05:51",""" +
         """"averageMicros":2.80,"speed":19876,"finished":false,"source":"data/replay/HI-Small","rate":20000,"paused":true,""" +
-        """"threshold":0.95,"defaultThreshold":0.943,"sinceAlerts":2,"sinceCaught":2,"sinceMinutes":90}"""
+        """"threshold":0.95,"defaultThreshold":0.943,"sinceAlerts":2,"sinceCaught":2,"sinceMinutes":90,"labelled":true}"""
+  }
+
+  "Dashboard.uploadJson" should "say what an uploaded file holds" in {
+    val parsed = aml.common.IbmCsv.parse(Iterator("2022/09/01 00:20,010,A,011,B,5.00,US Dollar,5.00,US Dollar,ACH"), Set("US Dollar"), 10).toOption.get
+    Dashboard.uploadJson("mine.csv", parsed, hubs = 0) shouldBe
+      """{"name":"mine.csv","payments":1,"skipped":0,"labelled":false,"hubs":0,"first":"2022-09-01 00:20","last":"2022-09-01 00:20","problems":[]}"""
   }
 
   "Dashboard.alertJson" should "include the facts behind the reasons, when the payment has them" in {

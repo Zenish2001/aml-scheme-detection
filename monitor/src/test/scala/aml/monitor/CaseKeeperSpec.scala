@@ -21,4 +21,13 @@ class CaseKeeperSpec extends ScalaTestWithActorTestKit with AnyFlatSpecLike {
     summary.alerts shouldBe 4
     summary.cases.map(c => (c.scheme, c.alerts.size)) shouldBe Seq(("FAN-OUT", 3), ("RANDOM", 1))
   }
+
+  it should "forget every alert when told to reset, for a new file" in {
+    val keeper = spawn(CaseKeeper())
+    val probe  = createTestProbe[CaseKeeper.Summary]()
+    keeper ! CaseKeeper.Alerted(alert(1, "A", "B", 0))
+    keeper ! CaseKeeper.Reset
+    keeper ! CaseKeeper.Report(probe.ref)
+    probe.receiveMessage().alerts shouldBe 0
+  }
 }
